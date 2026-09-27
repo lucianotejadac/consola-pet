@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Consola PET · simulador docente</title>
+<link rel="stylesheet" href="consola.css?v=1">
+</head>
+<body>
+<div id="consola">
+
+  <header id="barra">
+    <span class="marca">Consola PET</span>
+    <span class="sub">simulador docente de adquisición PET/CT</span>
+    <span class="hueco"></span>
+    <label class="mini"><input type="checkbox" id="ocultarId" checked> Ocultar identidad</label>
+    <button id="btnAcerca" class="plano">Qué es real y qué no</button>
+  </header>
+
+  <section id="imagenes">
+    <div class="panel" id="panelTopo">
+      <canvas id="cvTopo"></canvas>
+      <div class="rotulo" id="rotTopo">Topograma</div>
+    </div>
+    <div class="panel activo" id="panelAxial">
+      <canvas id="cvAxial"></canvas>
+      <div class="rotulo" id="rotAxial">Axial</div>
+      <div class="controles">
+        <button class="modo" data-modo="pet">PET</button>
+        <button class="modo" data-modo="ct">CT</button>
+        <button class="modo" data-modo="fusion">Fusión</button>
+        <input type="range" id="corte" min="0" max="0" value="0" title="Corte">
+      </div>
+    </div>
+    <div class="panel" id="panelMip">
+      <canvas id="cvMip"></canvas>
+      <div class="rotulo" id="rotMip">MIP</div>
+      <div class="controles">
+        <label>Giro <input type="range" id="giro" min="0" max="350" step="10" value="0"></label>
+        <label>Nivel <input type="range" id="nivel" min="5" max="300" value="100"></label>
+      </div>
+    </div>
+  </section>
+
+  <section id="franja">
+    <span id="protocolo">PETCT (sin estudio)</span>
+    <span id="identidad"></span>
+    <span class="hueco"></span>
+    <span id="resumen"></span>
+  </section>
+
+  <section id="inferior">
+    <div id="izquierda">
+      <div id="cronica"></div>
+      <div id="botones">
+        <button class="redondo azul" id="btnLoad" title="Cargar el estudio">Load</button>
+        <button class="redondo" id="btnStart" title="Reproducir la adquisición" disabled>Start</button>
+        <button class="redondo" id="btnSkip" title="Saltar al examen terminado" disabled>Skip</button>
+      </div>
+      <div id="velocidad">
+        <label>Velocidad
+          <select id="vel">
+            <option value="1">× 1 (tiempo real)</option>
+            <option value="10">× 10</option>
+            <option value="30" selected>× 30</option>
+            <option value="60">× 60</option>
+            <option value="120">× 120</option>
+          </select>
+        </label>
+      </div>
+    </div>
+    <div id="tarjeta">
+      <div id="contenido"></div>
+      <div id="pestanas">
+        <button class="pestana activa" data-pestana="routine">Routine</button>
+        <button class="pestana" data-pestana="scan">Scan</button>
+        <button class="pestana" data-pestana="recon">Recon</button>
+        <button class="pestana" data-pestana="auto">Auto Tasking</button>
+      </div>
+    </div>
+  </section>
+
+  <footer id="estado">
+    <span id="mensaje">Pulsa «Load» para cargar el PET y el CT del estudio.</span>
+    <span class="hueco"></span>
+    <span id="reloj"></span>
+  </footer>
+</div>
+
+<div id="lista" hidden></div>
+
+<div id="menuCarga" class="dialogo" hidden>
+  <div class="caja">
+    <h2>Cargar el estudio</h2>
+    <p>Elige la carpeta con las series PET y CT, los archivos DICOM sueltos o los ZIP tal como se descargan. Los archivos se leen en tu navegador y no salen de tu equipo.</p>
+    <div class="fila">
+      <button id="elegirCarpeta">Carpeta…</button>
+      <button id="elegirArchivos">Archivos o ZIP…</button>
+      <button id="cerrarCarga" class="plano">Cancelar</button>
+    </div>
+    <input type="file" id="entradaCarpeta" webkitdirectory multiple hidden>
+    <input type="file" id="entradaArchivos" multiple hidden>
+  </div>
+</div>
+
+<div id="acerca" class="dialogo" hidden>
+  <div class="caja ancha">
+    <h2>Qué es real y qué no</h2>
+    <h3>Sale de la cabecera DICOM del estudio que cargaste</h3>
+    <p>Radiofármaco, actividad, hora de inyección, método de reconstrucción, iteraciones, subconjuntos, filtro, matriz, tamaño de píxel, correcciones aplicadas, y los parámetros del CT (kV, mAs, paso, núcleo, CTDIvol).</p>
+    <h3>Se deduce de los datos</h3>
+    <p>El número de camas, su posición y el orden en que se adquirieron se calculan a partir de la hora de adquisición de cada corte. El topograma es una proyección del CT, porque el estudio no trae la serie del topograma. La curva de la pestaña Scan es una tasa relativa estimada desde la imagen, no la tasa de cuentas que midió el equipo.</p>
+    <h3>Es ilustrativo</h3>
+    <p>Las alternativas que aparecen al abrir cada lista. El valor marcado es el que se usó; los demás muestran qué se podría haber elegido en una consola, pero no cambian la imagen: el estudio ya está reconstruido y los datos crudos no vienen en el DICOM.</p>
+    <p>La reproducción no vuelve a adquirir ni a reconstruir nada: muestra los cortes ya reconstruidos en el orden y con los tiempos en que se adquirieron las camas.</p>
+    <p class="nota">Uso docente. No es una consola real ni un visor validado para diagnóstico.</p>
+    <div class="fila"><button id="cerrarAcerca">Cerrar</button></div>
+  </div>
+</div>
+
+<script src="vendor/dicomParser.min.js"></script>
+<script src="consola.js?v=1"></script>
+</body>
+</html>
