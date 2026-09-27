@@ -4,9 +4,13 @@ Simulador docente que presenta un PET/CT ya reconstruido como si se acabara de a
 
 ## Qué hace
 
-1. **Load** carga el estudio: la carpeta con las series, los DICOM sueltos o los ZIP tal como se descargan. Basta la serie PET; con el CT se agregan el topograma, el CT axial y la fusión. Si también se carga el PET sin corregir, queda como segundo trabajo de reconstrucción.
-2. **Start** reproduce la adquisición: las camas se recorren en el orden y con los tiempos que trae la cabecera, y los cortes aparecen a medida que termina la última cama que los cubre. **Suspend** la detiene y **Skip** salta al examen terminado.
-3. Las pestañas **Routine**, **Scan**, **Recon** y **Auto Tasking** muestran los parámetros como controles de consola. Las listas se abren y dejan ver otras opciones, pero el valor no cambia: el estudio ya está reconstruido.
+1. **Load** carga el estudio: la carpeta con las series, los DICOM sueltos o los ZIP tal como se descargan. Basta la serie PET; con el CT se agregan el topograma, la etapa del CT y la fusión.
+2. La consola parte solo con el **topograma**. El estudiante define el rango arrastrando sus bordes: cada borde salta de cama en cama, así que el rango nunca queda a la mitad de una.
+3. **Start** adquiere el CT sobre ese rango, con la duración que resulta de su largo y la velocidad de mesa. Al terminar, la consola queda en pausa con el CT a la vista.
+4. **Start** de nuevo adquiere el PET: las camas elegidas se recorren en el orden y con los tiempos de la cabecera, y los cortes aparecen a medida que termina la última cama que los cubre. **Suspend** lo detiene y **Skip** salta la etapa en curso.
+5. La ventana derecha muestra el MIP corregido, el MIP sin corregir o el corte axial sin corregir, en el mismo corte que la ventana central, para comparar con y sin corrección de atenuación. Necesita que se haya cargado la serie PET sin corregir.
+6. Las pestañas **Routine**, **Scan**, **Recon** y **Auto Tasking** muestran los parámetros como controles de consola. Las listas se abren y dejan ver otras opciones, pero el valor no cambia: el estudio ya está reconstruido.
+7. **New** vuelve al topograma para planificar otro rango.
 
 El botón «Qué es real y qué no» separa lo que sale de la cabecera DICOM, lo que se deduce de los datos y lo que es ilustrativo.
 

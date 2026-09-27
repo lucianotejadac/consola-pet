@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Consola PET · simulador docente</title>
-<link rel="stylesheet" href="consola.css?v=1">
+<link rel="stylesheet" href="consola.css?v=2">
 </head>
 <body>
 <div id="consola">
@@ -26,15 +26,20 @@
       <canvas id="cvAxial"></canvas>
       <div class="rotulo" id="rotAxial">Axial</div>
       <div class="controles">
-        <button class="modo" data-modo="pet">PET</button>
-        <button class="modo" data-modo="ct">CT</button>
-        <button class="modo" data-modo="fusion">Fusión</button>
+        <button class="modo izq" data-modo="pet">PET</button>
+        <button class="modo izq" data-modo="ct">CT</button>
+        <button class="modo izq" data-modo="fusion">Fusión</button>
         <input type="range" id="corte" min="0" max="0" value="0" title="Corte">
       </div>
     </div>
     <div class="panel" id="panelMip">
       <canvas id="cvMip"></canvas>
       <div class="rotulo" id="rotMip">MIP</div>
+      <div class="controles arriba">
+        <button class="modo der" data-der="mipac">MIP AC</button>
+        <button class="modo der" data-der="mipnac">MIP NAC</button>
+        <button class="modo der" data-der="axnac">Axial NAC</button>
+      </div>
       <div class="controles">
         <label>Giro <input type="range" id="giro" min="0" max="350" step="10" value="0"></label>
         <label>Nivel <input type="range" id="nivel" min="5" max="300" value="100"></label>
@@ -54,8 +59,8 @@
       <div id="cronica"></div>
       <div id="botones">
         <button class="redondo azul" id="btnLoad" title="Cargar el estudio">Load</button>
-        <button class="redondo" id="btnStart" title="Reproducir la adquisición" disabled>Start</button>
-        <button class="redondo" id="btnSkip" title="Saltar al examen terminado" disabled>Skip</button>
+        <button class="redondo" id="btnStart" title="Iniciar la etapa siguiente" disabled>Start</button>
+        <button class="redondo" id="btnSkip" title="Saltar la etapa en curso" disabled>Skip</button>
       </div>
       <div id="velocidad">
         <label>Velocidad
@@ -109,16 +114,16 @@
     <h3>Sale de la cabecera DICOM del estudio que cargaste</h3>
     <p>Radiofármaco, actividad, hora de inyección, método de reconstrucción, iteraciones, subconjuntos, filtro, matriz, tamaño de píxel, correcciones aplicadas, y los parámetros del CT (kV, mAs, paso, núcleo, CTDIvol).</p>
     <h3>Se deduce de los datos</h3>
-    <p>El número de camas, su posición y el orden en que se adquirieron se calculan a partir de la hora de adquisición de cada corte. El topograma es una proyección del CT, porque el estudio no trae la serie del topograma. La curva de la pestaña Scan es una tasa relativa estimada desde la imagen, no la tasa de cuentas que midió el equipo.</p>
+    <p>El rango que defines sobre el topograma solo puede abarcar camas completas de las que tiene el estudio, porque las imágenes ya existen: acortar el rango deja fuera camas, no las vuelve a adquirir. El número de camas, su posición y el orden en que se adquirieron se calculan a partir de la hora de adquisición de cada corte. El topograma es una proyección del CT, porque el estudio no trae la serie del topograma. La curva de la pestaña Scan es una tasa relativa estimada desde la imagen, no la tasa de cuentas que midió el equipo.</p>
     <h3>Es ilustrativo</h3>
     <p>Las alternativas que aparecen al abrir cada lista. El valor marcado es el que se usó; los demás muestran qué se podría haber elegido en una consola, pero no cambian la imagen: el estudio ya está reconstruido y los datos crudos no vienen en el DICOM.</p>
-    <p>La reproducción no vuelve a adquirir ni a reconstruir nada: muestra los cortes ya reconstruidos en el orden y con los tiempos en que se adquirieron las camas.</p>
+    <p>La reproducción no vuelve a adquirir ni a reconstruir nada: muestra los cortes ya reconstruidos en el orden y con los tiempos en que se adquirieron. El CT dura lo que resulta de su largo y la velocidad de mesa de la cabecera, y se muestra en al menos 4 segundos para que se alcance a ver.</p>
     <p class="nota">Uso docente. No es una consola real ni un visor validado para diagnóstico.</p>
     <div class="fila"><button id="cerrarAcerca">Cerrar</button></div>
   </div>
 </div>
 
 <script src="vendor/dicomParser.min.js"></script>
-<script src="consola.js?v=1"></script>
+<script src="consola.js?v=2"></script>
 </body>
 </html>

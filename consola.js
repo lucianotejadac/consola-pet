@@ -12,7 +12,8 @@
     pets: [],                 // series PET de la misma adquisicion (trabajos de reconstruccion)
     trabajo: 0,               // indice en pets
     ct: null, otrosCt: [], ignoradas: [],
-    camas: [], completa: null, total: 0, continuo: false,
+    camas: [], espacial: [], sel: [], completa: null, total: 0, continuo: false,
+    b0: 0, b1: 0, r0: 0, r1: 0, largo: 0, ctDur: 0, relojCt: 0, ac: null, nac: null, derecha: 'mipac',
     reloj: 0, vel: 30,
     corte: 0, modo: 'pet', giro: 0, nivel: 1,
     paso: 'pet', pestana: 'routine', unidadDosis: 'mCi',
@@ -67,7 +68,7 @@
     let ds;
     try { ds = dicomParser.parseDicom(new Uint8Array(buf)); } catch (e) { return null; }
     const s = t => { const v = ds.string(t); return v === undefined ? '' : v.trim(); };
-    const BINARIOS = ['x00189311', 'x00189345'];
+    const BINARIOS = ['x00189311', 'x00189345', 'x00189309'];
     const f = t => {
       const e = ds.elements[t]; if (!e) return NaN;
       if (e.vr === 'FD' || (!e.vr && BINARIOS.includes(t))) return ds.double(t);
@@ -134,7 +135,7 @@
       duracion: f('x00181242'), tipoSerie: s('x00541000'), aceptacion: f('x00541200'), mash: s('x00541201'),
       // CT
       kv: f('x00180060'), ma: f('x00181151'), mas: f('x00181152'), tExp: f('x00181150'),
-      paso: f('x00189311'), ctdi: f('x00189345'), fov: f('x00181100'), fovDatos: f('x00180090'),
+      paso: f('x00189311'), ctdi: f('x00189345'), velMesa: f('x00189309'), fov: f('x00181100'), fovDatos: f('x00180090'),
       filtro: s('x00181160'),
     };
     const sec = ds.elements.x00540016;
@@ -279,16 +280,17 @@
     if (E.ct) E.ct.dePet = principal.zs.map(z => { let m = 0; E.ct.zs.forEach((zz, i) => { if (Math.abs(zz - z) < Math.abs(E.ct.zs[m] - z)) m = i; }); return Math.abs(E.ct.zs[m] - z) <= E.ct.dz ? m : -1; });
 
     Object.assign(E, estimarCamas(principal));
+    E.espacial = E.camas.slice().sort((a, b) => a.c0 - b.c0);
+    E.pets.forEach(v => { v.nivelBase = v.topeMediano > 0 ? v.topeMediano : percentil(v.vol, 0.999); });
+    E.ac = E.pets.find(corr) || null; E.nac = E.pets.find(v => !corr(v)) || null;
+    E.derecha = E.ac ? 'mipac' : 'mipnac';
+    if (E.ct) { const t = E.ct.tiempos; E.ctSentido = (Number.isNaN(t[0]) || Number.isNaN(t[E.ct.n - 1]) || t[0] === t[E.ct.n - 1]) ? 'Craniocaudal' : (t[0] < t[E.ct.n - 1] ? 'Craniocaudal' : 'Caudocranial'); }
     E.topo = topograma(E.ct || principal, !!E.ct);
-    const c = principal.cab;
-    E.nivelBase = principal.topeMediano > 0 ? principal.topeMediano : percentil(principal.vol, 0.999);
     E.nivel = 1; $('nivel').value = 100; E.giro = 0; $('giro').value = 0;
-    E.corte = Math.floor(principal.n / 2); $('corte').max = principal.n - 1; $('corte').value = E.corte;
-    E.mip = { ang: -1, filas: new Float32Array(principal.n * principal.cols), hechas: new Uint8Array(principal.n) };
-    E.reloj = 0; E.fase = 'listo'; E.paso = 'pet'; E.pestana = 'routine'; E.modo = 'pet';
-    $('btnStart').disabled = false; $('btnSkip').disabled = false;
-    const partes = [E.pets.length + ' serie(s) PET de ' + principal.n + ' cortes', E.ct ? 'CT de ' + E.ct.n + ' cortes' : 'sin CT', E.continuo ? 'camilla en movimiento continuo' : E.camas.length + ' cama(s) de ' + num(E.dur / 60, 1) + ' min'];
-    decir('Estudio cargado: ' + partes.join(', ') + '. Pulsa «Start» para reproducir la adquisición.' + (E.ignoradas.length ? ' Series no usadas: ' + E.ignoradas.join(', ') + '.' : ''));
+    E.mip = { clave: '', filas: new Float32Array(principal.n * principal.cols), hechas: new Uint8Array(principal.n) };
+    planificar();
+    const partes = [E.pets.length + ' serie(s) PET de ' + principal.n + ' cortes', E.ct ? 'CT de ' + E.ct.n + ' cortes' : 'sin CT', E.continuo ? 'camilla en movimiento continuo' : E.camas.length + ' cama(s) disponibles de ' + num(E.dur / 60, 1) + ' min'];
+    decir('Estudio cargado: ' + partes.join(', ') + '. ' + AYUDA_RANGO + (E.ignoradas.length ? ' Series no usadas: ' + E.ignoradas.join(', ') + '.' : ''));
     refrescarTodo();
   }
 
@@ -297,35 +299,110 @@
     m.sort((a, b) => a - b); return m[Math.floor(m.length * q)] || 1;
   }
 
-  // ---------- reproduccion ----------
+  // ---------- plan, rango y reproduccion ----------
+  const AYUDA_RANGO = 'Arrastra los bordes del rango sobre el topograma y pulsa «Start». El rango se ajusta a camas completas.';
+  const FASES_PET = ['adquiriendo', 'pausa', 'terminado'];
+  const CT_HECHO = ['entre', 'adquiriendo', 'pausa', 'terminado'];
+
+  function planificar() {
+    pararReloj();
+    E.fase = 'rango'; E.reloj = 0; E.relojCt = 0;
+    E.paso = E.ct ? 'ct' : 'pet'; E.pestana = 'routine'; E.modo = E.ct ? 'ct' : 'pet'; E.trabajo = 0;
+    if (E.continuo) fijarCortes(0, Math.floor(E.pets[0].n / 2));
+    else fijarRango(0, Math.max(0, Math.ceil(E.espacial.length / 2) - 1));
+    $('btnStart').disabled = false; $('btnSkip').disabled = false;
+  }
+  // Rango por camas completas: de la cama b0 a la b1, contadas de craneal a caudal.
+  function fijarRango(b0, b1) {
+    const p = E.pets[0], n = E.espacial.length;
+    b0 = Math.max(0, Math.min(n - 1, b0)); b1 = Math.max(b0, Math.min(n - 1, b1));
+    E.b0 = b0; E.b1 = b1;
+    const sel = E.espacial.slice(b0, b1 + 1), t0 = Math.min(...sel.map(c => c.t));
+    sel.forEach(c => { c.ts = c.t - t0; });
+    E.sel = sel.slice().sort((a, b) => a.ts - b.ts);
+    E.r0 = Math.min(...sel.map(c => c.c0)); E.r1 = Math.max(...sel.map(c => c.c1));
+    E.total = Math.max(...sel.map(c => c.ts)) + E.dur;
+    E.completa = new Float32Array(p.n).fill(Infinity);
+    for (let i = E.r0; i <= E.r1; i++) { let fin = 0; sel.forEach(c => { if (i >= c.c0 && i <= c.c1) fin = Math.max(fin, c.ts + E.dur); }); if (fin) E.completa[i] = fin; }
+    alFijar();
+  }
+  // Camilla en movimiento continuo: no hay camas, el rango se fija por cortes.
+  function fijarCortes(r0, r1) {
+    const p = E.pets[0];
+    r0 = Math.max(0, Math.min(p.n - 1, r0)); r1 = Math.max(r0, Math.min(p.n - 1, r1));
+    E.r0 = r0; E.r1 = r1; E.sel = [];
+    const t = p.tiempos.slice(r0, r1 + 1).filter(v => !Number.isNaN(v)), t0 = t.length ? Math.min(...t) : 0;
+    E.completa = new Float32Array(p.n).fill(Infinity); E.total = E.dur;
+    for (let i = r0; i <= r1; i++) { E.completa[i] = (Number.isNaN(p.tiempos[i]) ? 0 : p.tiempos[i] - t0) + E.dur; E.total = Math.max(E.total, E.completa[i]); }
+    alFijar();
+  }
+  function alFijar() {
+    const p = E.pets[0];
+    E.largo = (E.r1 - E.r0 + 1) * p.dz;
+    const vm = E.ct ? E.ct.cab.velMesa : NaN;
+    E.ctDur = E.ct ? (vm > 0 ? E.largo / vm : 10) : 0;
+    E.ctDurReal = vm > 0;
+    E.corte = Math.round((E.r0 + E.r1) / 2);
+    $('corte').min = E.r0; $('corte').max = E.r1; $('corte').value = E.corte;
+    if (E.mip) { E.mip.hechas.fill(0); E.mip.clave = ''; }
+  }
+
   let marca = 0, cuadro = 0;
   function pararReloj() { if (cuadro) cancelAnimationFrame(cuadro); cuadro = 0; }
+  function arrancar() { marca = performance.now(); pararReloj(); cuadro = requestAnimationFrame(latido); }
   function latido(ahora) {
-    if (E.fase !== 'adquiriendo') { cuadro = 0; return; }
     const dt = Math.min(0.25, (ahora - marca) / 1000); marca = ahora;
-    E.reloj += dt * E.vel;
-    if (E.reloj >= E.total) { terminar(); return; }
-    pintar(); pintarCronica(); pintarGrafico();
-    const k = camaActual();
-    decir(E.continuo ? 'Adquiriendo con la camilla en movimiento continuo…' : (k >= 0 ? 'Adquiriendo la cama ' + (k + 1) + ' de ' + E.camas.length + '…' : 'Moviendo la camilla a la cama siguiente…'));
+    if (E.fase === 'ct') {
+      // El CT dura segundos: salvo en tiempo real, se reproduce en al menos 4 s para que se alcance a ver.
+      E.relojCt += dt * (E.vel === 1 ? 1 : Math.min(E.vel, Math.max(1, E.ctDur / 4)));
+      if (E.relojCt >= E.ctDur) { finCt(); return; }
+      pintar(); pintarCronica();
+      decir('Adquiriendo el CT: ' + num(E.relojCt, 1) + ' de ' + num(E.ctDur, 1) + ' s…');
+    } else if (E.fase === 'adquiriendo') {
+      E.reloj += dt * E.vel;
+      if (E.reloj >= E.total) { finPet(); return; }
+      pintar(); pintarCronica(); pintarGrafico();
+      const k = camaActual();
+      decir(E.continuo ? 'Adquiriendo el PET con la camilla en movimiento continuo…' : (k >= 0 ? 'Adquiriendo el PET: cama ' + (k + 1) + ' de ' + E.sel.length + '…' : 'Moviendo la camilla a la cama siguiente…'));
+    } else { cuadro = 0; return; }
     cuadro = requestAnimationFrame(latido);
   }
+  function iniciarPet() { if (E.fase !== 'pausa') E.reloj = 0; E.fase = 'adquiriendo'; E.paso = 'pet'; E.pestana = 'routine'; if (E.modo === 'ct') E.modo = 'pet'; }
   function iniciar() {
-    if (E.fase === 'vacio') return;
-    if (E.fase === 'terminado') { E.reloj = 0; E.mip.hechas.fill(0); E.mip.ang = -1; }
-    E.fase = 'adquiriendo'; E.paso = 'pet'; if (E.modo === 'ct') E.modo = 'pet';
-    marca = performance.now(); pararReloj(); cuadro = requestAnimationFrame(latido);
-    refrescarTodo();
+    if (E.fase === 'vacio' || E.fase === 'ct') return;
+    if (E.fase === 'terminado') { planificar(); decir('Examen nuevo. ' + AYUDA_RANGO); refrescarTodo(); return; }
+    if (E.fase === 'rango' && E.ct) { E.fase = 'ct'; E.relojCt = 0; E.paso = 'ct'; E.modo = 'ct'; E.pestana = 'routine'; }
+    else iniciarPet();
+    arrancar(); refrescarTodo();
   }
   function pausar() { if (E.fase !== 'adquiriendo') return; E.fase = 'pausa'; pararReloj(); decir('Adquisición suspendida. Pulsa «Resume» para continuar.', true); refrescarTodo(); }
-  function terminar() {
-    if (E.fase === 'vacio') return;
-    pararReloj(); E.reloj = E.total; E.fase = 'terminado';
-    decir('Examen terminado: ' + E.pets.map(p => p.desc).join(' y ') + ' reconstruidas. Revisa las pestañas Routine, Scan y Recon.');
+  function finCt() {
+    pararReloj(); E.relojCt = E.ctDur; E.fase = 'entre'; E.paso = 'pet'; E.pestana = 'routine'; E.modo = 'ct';
+    decir('CT adquirido: ' + (E.r1 - E.r0 + 1) + ' cortes en ' + num(E.ctDur, 1) + ' s. Revísalo y pulsa «Start» para adquirir el PET sobre el mismo rango.');
     refrescarTodo();
   }
-  const camaActual = () => E.camas.findIndex(c => E.reloj >= c.t && E.reloj < c.t + E.dur);
-  const revelado = i => E.fase === 'terminado' || (E.fase !== 'listo' && E.fase !== 'vacio' && E.reloj >= E.completa[i]);
+  function finPet() {
+    pararReloj(); E.reloj = E.total; E.fase = 'terminado'; if (E.modo === 'ct') E.modo = 'pet';
+    decir('Examen terminado: ' + E.pets.map(v => v.desc).join(' y ') + ' reconstruidas' + (E.nac && E.ac ? '. Compara la serie sin corregir en la ventana derecha.' : '.'));
+    refrescarTodo();
+  }
+  // Skip salta la etapa en curso: del rango o del CT a la pausa, y de ahi al examen terminado.
+  function saltar() {
+    if (E.fase === 'vacio' || E.fase === 'terminado') return;
+    if ((E.fase === 'rango' || E.fase === 'ct') && E.ct) finCt(); else finPet();
+  }
+  function terminar() { if (E.fase === 'vacio') return; if (E.ct) E.relojCt = E.ctDur; finPet(); }
+  const camaActual = () => E.sel.findIndex(c => E.reloj >= c.ts && E.reloj < c.ts + E.dur);
+  const enRango = i => i >= E.r0 && i <= E.r1;
+  const revelado = i => enRango(i) && (E.fase === 'terminado' || ((E.fase === 'adquiriendo' || E.fase === 'pausa') && E.reloj >= E.completa[i]));
+  // El CT avanza en su sentido real; i es el indice del corte PET que le corresponde.
+  function ctVisible(i) {
+    if (!E.ct || !enRango(i) || E.ct.dePet[i] < 0) return false;
+    if (CT_HECHO.includes(E.fase)) return true;
+    if (E.fase !== 'ct') return false;
+    const n = E.r1 - E.r0 + 1, f = E.relojCt / E.ctDur;
+    return (E.ctSentido === 'Caudocranial' ? (E.r1 - i + 1) : (i - E.r0 + 1)) / n <= f;
+  }
 
   // ---------- dibujo ----------
   const pet = () => E.pets[E.trabajo];
@@ -357,7 +434,7 @@
   function pintarTopo() {
     const cv = $('cvTopo'), { g, w, h, d } = ajustar(cv);
     if (E.fase === 'vacio') { texto(g, d, ['Sin estudio'], 10 * d, 10 * d, '#667'); return; }
-    const T = E.topo, p = pet();
+    const T = E.topo, p = E.pets[0];
     const alto = p.n * p.dz, caja = encajar(w, h, T.ancho, alto, 26 * d);
     const px = new Uint8ClampedArray(T.cols * T.n * 4);
     for (let i = 0; i < T.cols * T.n; i++) {
@@ -368,20 +445,27 @@
     // El topograma del CT puede tener otra cantidad de cortes que el PET: se dibuja en su propia extension.
     const v = E.ct || p, zTop = p.zs[0] + p.dz / 2, e = caja.h / alto;
     const yDe = z => caja.y + (zTop - z) * e;
-    const cajaT = { x: caja.x, w: caja.w, y: yDe(v.zs[0] + v.dz / 2), h: v.n * v.dz * e };
-    volcar(g, px, T.cols, T.n, cajaT);
-    E.cajaTopo = { caja, yDe, zDe: y => zTop - (y - caja.y) / e };
-    // Rango del PET y camas
-    const x0 = caja.x + caja.w * 0.06, x1 = caja.x + caja.w * 0.94;
-    g.lineWidth = d;
+    const ySup = i => yDe(p.zs[i] + p.dz / 2), yInf = i => yDe(p.zs[i] - p.dz / 2);
+    volcar(g, px, T.cols, T.n, { x: caja.x, w: caja.w, y: yDe(v.zs[0] + v.dz / 2), h: v.n * v.dz * e });
+    const x0 = caja.x + caja.w * 0.06, x1 = caja.x + caja.w * 0.94, ya0 = ySup(E.r0), yb0 = yInf(E.r1);
+    E.cajaTopo = { caja, ySup, yInf, yA: ya0, yB: yb0 };
+    const plan = E.fase === 'rango';
+    // Fuera del rango, el topograma queda atenuado.
+    g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(caja.x, caja.y, caja.w, ya0 - caja.y); g.fillRect(caja.x, yb0, caja.w, caja.y + caja.h - yb0);
     if (E.continuo) {
-      g.strokeStyle = '#fff'; g.strokeRect(x0, caja.y, x1 - x0, caja.h);
-      if (E.fase === 'adquiriendo' || E.fase === 'pausa') { const y = caja.y + caja.h * Math.min(1, E.reloj / E.total); g.strokeStyle = '#38e05a'; g.lineWidth = 2 * d; g.beginPath(); g.moveTo(x0, y); g.lineTo(x1, y); g.stroke(); }
+      g.strokeStyle = '#fff'; g.lineWidth = d; g.strokeRect(x0, ya0, x1 - x0, yb0 - ya0);
+      if (E.fase === 'adquiriendo' || E.fase === 'pausa') { const y = ya0 + (yb0 - ya0) * Math.min(1, E.reloj / E.total); g.strokeStyle = '#38e05a'; g.lineWidth = 2 * d; g.beginPath(); g.moveTo(x0, y); g.lineTo(x1, y); g.stroke(); }
     } else {
+      if (plan) {
+        // Camas disponibles que quedaron fuera: punteadas, para que se vea donde puede calzar el rango.
+        g.setLineDash([3 * d, 4 * d]); g.strokeStyle = 'rgba(255,255,255,.45)'; g.lineWidth = d;
+        E.espacial.forEach((c, k) => { if (k < E.b0 || k > E.b1) g.strokeRect(x0, ySup(c.c0), x1 - x0, yInf(c.c1) - ySup(c.c0)); });
+        g.setLineDash([]);
+      }
       const act = (E.fase === 'adquiriendo' || E.fase === 'pausa') ? camaActual() : -1;
-      E.camas.forEach((c, k) => {
-        const ya = yDe(p.zs[c.c0] + p.dz / 2), yb = yDe(p.zs[c.c1] - p.dz / 2), des = (k % 2) * 7 * d;
-        const hecha = E.fase === 'terminado' || ((E.fase === 'adquiriendo' || E.fase === 'pausa') && E.reloj >= c.t + E.dur);
+      E.sel.forEach((c, k) => {
+        const ya = ySup(c.c0), yb = yInf(c.c1), des = (k % 2) * 7 * d;
+        const hecha = E.fase === 'terminado' || ((E.fase === 'adquiriendo' || E.fase === 'pausa') && E.reloj >= c.ts + E.dur);
         g.strokeStyle = k === act ? '#38e05a' : (hecha ? '#5f86ff' : '#ffffff');
         g.lineWidth = (k === act ? 2.2 : 1) * d;
         if (k === act) { g.fillStyle = 'rgba(56,224,90,.16)'; g.fillRect(x0 - des, ya, x1 - x0 + 2 * des, yb - ya); }
@@ -389,31 +473,59 @@
         texto(g, d, [String(k + 1)], x1 + des + 4 * d, (ya + yb) / 2 - 6 * d, g.strokeStyle);
       });
     }
-    // Corte mostrado en el panel axial
-    const yc = yDe(p.zs[E.corte]);
-    g.strokeStyle = '#ffd24a'; g.lineWidth = d; g.setLineDash([5 * d, 4 * d]); g.beginPath(); g.moveTo(caja.x, yc); g.lineTo(caja.x + caja.w, yc); g.stroke(); g.setLineDash([]);
+    if (plan) {
+      // Bordes del rango: se arrastran y saltan de cama en cama.
+      g.strokeStyle = '#ff5ad6'; g.fillStyle = '#ff5ad6'; g.lineWidth = 2.5 * d;
+      [[ya0, 1], [yb0, -1]].forEach(([y, s]) => {
+        g.beginPath(); g.moveTo(caja.x - 8 * d, y); g.lineTo(caja.x + caja.w + 8 * d, y); g.stroke();
+        [caja.x + caja.w * 0.25, caja.x + caja.w * 0.75].forEach(x => { g.beginPath(); g.moveTo(x - 6 * d, y + s * 12 * d); g.lineTo(x + 6 * d, y + s * 12 * d); g.lineTo(x, y + s * 2 * d); g.closePath(); g.fill(); });
+      });
+    }
+    if (E.fase === 'ct') {
+      const f = Math.min(1, E.relojCt / E.ctDur), y = E.ctSentido === 'Caudocranial' ? yb0 - (yb0 - ya0) * f : ya0 + (yb0 - ya0) * f;
+      g.strokeStyle = '#4fe3ff'; g.lineWidth = 2.5 * d; g.beginPath(); g.moveTo(caja.x, y); g.lineTo(caja.x + caja.w, y); g.stroke();
+      g.fillStyle = 'rgba(79,227,255,.13)'; if (E.ctSentido === 'Caudocranial') g.fillRect(caja.x, y, caja.w, yb0 - y); else g.fillRect(caja.x, ya0, caja.w, y - ya0);
+    }
+    if (!plan && E.fase !== 'ct') {
+      const yc = yDe(p.zs[E.corte]);
+      g.strokeStyle = '#ffd24a'; g.lineWidth = d; g.setLineDash([5 * d, 4 * d]); g.beginPath(); g.moveTo(caja.x, yc); g.lineTo(caja.x + caja.w, yc); g.stroke(); g.setLineDash([]);
+    }
     const c = (E.ct || p).cab;
     texto(g, d, ['R'], 8 * d, h / 2 - 6 * d, '#fff');
-    texto(g, d, E.ct ? ['kV ' + num(c.kv, 0), 'mA ' + num(E.ct.maMedio, 0) + ' (medio)', 'SL ' + num(c.grosor, 1)] : ['Proyección del PET'], 8 * d, h - (E.ct ? 60 : 32) * d, '#fff');
+    texto(g, d, E.ct ? ['kV ' + num(c.kv, 0), 'SL ' + num(c.grosor, 1)] : ['Proyección del PET'], 8 * d, h - (E.ct ? 46 : 32) * d, '#fff');
     texto(g, d, [fechaDe(c.fechaSerie || c.fechaEstudio), horaDe(c.horaSerie), p.cab.posicion || ''], 8 * d, 8 * d, '#fff');
-    texto(g, d, ['LEN ' + num(alto, 0) + ' mm', 'SP1 ' + num(p.zs[0], 1), 'SP2 ' + num(p.zs[p.n - 1], 1)], w - 8 * d, 22 * d, '#fff', 'right');
+    texto(g, d, ['LEN ' + num(E.largo, 0) + ' mm', 'SP1 ' + num(p.zs[E.r0], 1), 'SP2 ' + num(p.zs[E.r1], 1), E.continuo ? '' : E.sel.length + ' de ' + E.espacial.length + ' camas'], w - 8 * d, h - 62 * d, plan ? '#ff9ae6' : '#fff', 'right');
     $('rotTopo').textContent = E.ct ? 'Topograma (proyección del CT)' : 'Topograma (proyección del PET)';
   }
 
+  // Dibuja un corte axial de una serie PET en escala invertida y devuelve la caja usada.
+  function axialPet(g, w, h, d, p, i, hay) {
+    const caja = encajar(w, h, p.cols * p.dx, p.rows * p.dy, 8 * d), tope = p.nivelBase * E.nivel;
+    if (hay) {
+      const px = new Uint8ClampedArray(p.rows * p.cols * 4), b = i * p.rows * p.cols;
+      for (let q = 0; q < p.rows * p.cols; q++) { const c = 255 - 255 * Math.min(1, Math.max(0, p.vol[b + q] / tope)); px[q * 4] = px[q * 4 + 1] = px[q * 4 + 2] = c; px[q * 4 + 3] = 255; }
+      volcar(g, px, p.cols, p.rows, caja);
+    }
+    return caja;
+  }
+  const avisoSinPet = i => {
+    if (E.fase === 'entre') return 'PET sin adquirir: pulsa Start';
+    if (E.fase === 'ct') return 'Adquiriendo el CT';
+    const k = E.sel.findIndex(c => i >= c.c0 && i <= c.c1);
+    return 'Corte aún no adquirido' + (k >= 0 ? ' (cama ' + (k + 1) + ')' : '');
+  };
+
   function pintarAxial() {
     const cv = $('cvAxial'), { g, w, h, d } = ajustar(cv);
-    document.querySelectorAll('button.modo').forEach(b => { b.classList.toggle('activa', b.dataset.modo === E.modo); b.disabled = E.fase === 'vacio' || (b.dataset.modo !== 'pet' && !E.ct); });
+    document.querySelectorAll('button.modo.izq').forEach(b => { b.classList.toggle('activa', b.dataset.modo === E.modo); b.disabled = E.fase === 'vacio' || E.fase === 'rango' || (b.dataset.modo === 'ct' ? !E.ct : (!FASES_PET.includes(E.fase) || (b.dataset.modo === 'fusion' && !E.ct))); });
+    $('corte').disabled = E.fase === 'vacio' || E.fase === 'rango';
     if (E.fase === 'vacio') { texto(g, d, ['Sin estudio'], 10 * d, 10 * d, '#667'); return; }
-    const p = pet(), i = E.corte, hay = revelado(i), ct = E.ct, j = ct ? ct.dePet[i] : -1;
-    const tope = E.nivelBase * E.nivel;
+    if (E.fase === 'rango') { texto(g, d, ['Aún no hay imágenes axiales.', 'Define el rango en el topograma', 'y pulsa Start.'], w / 2, h / 2 - 20 * d, '#ffd24a', 'center'); $('rotAxial').textContent = 'Axial'; return; }
+    const p = pet(), i = E.corte, hay = revelado(i), ct = E.ct, j = ct && ctVisible(i) ? ct.dePet[i] : -1;
+    const tope = p.nivelBase * E.nivel;
     let caja, leyenda = [];
     if (E.modo === 'pet') {
-      caja = encajar(w, h, p.cols * p.dx, p.rows * p.dy, 8 * d);
-      if (hay) {
-        const px = new Uint8ClampedArray(p.rows * p.cols * 4), b = i * p.rows * p.cols;
-        for (let q = 0; q < p.rows * p.cols; q++) { const c = 255 - 255 * Math.min(1, Math.max(0, p.vol[b + q] / tope)); px[q * 4] = px[q * 4 + 1] = px[q * 4 + 2] = c; px[q * 4 + 3] = 255; }
-        volcar(g, px, p.cols, p.rows, caja);
-      }
+      caja = axialPet(g, w, h, d, p, i, hay);
       E.cajaAxial = { caja, x0: p.x0 - p.dx / 2, y0: p.y0 - p.dy / 2, ancho: p.cols * p.dx, alto: p.rows * p.dy };
       leyenda = [p.desc, p.cab.metodo, p.cab.nucleo];
     } else {
@@ -440,10 +552,8 @@
       E.cajaAxial = { caja, x0: X0, y0: Y0, ancho, alto };
       leyenda = E.modo === 'ct' ? [ct.desc, 'W ' + ww + '  C ' + wc] : [ct.desc + ' + ' + p.desc, 'W ' + ww + '  C ' + wc];
     }
-    if (!hay && E.modo !== 'ct') {
-      const k = E.camas.findIndex(c => i >= c.c0 && i <= c.c1);
-      texto(g, d, [E.fase === 'listo' ? 'PET sin adquirir: pulsa Start' : 'Corte aún no adquirido' + (k >= 0 ? ' (cama ' + (k + 1) + ')' : '')], w / 2, h / 2 - 6 * d, '#ffd24a', 'center');
-    }
+    if (!hay && E.modo === 'pet') texto(g, d, [avisoSinPet(i)], w / 2, h / 2 - 6 * d, '#ffd24a', 'center');
+    if (E.modo === 'ct' && j < 0) texto(g, d, ['Corte de CT aún no adquirido'], w / 2, h / 2 - 6 * d, '#4fe3ff', 'center');
     texto(g, d, ['IMA ' + (i + 1) + ' / ' + p.n, 'SP ' + num(p.zs[i], 1), E.lectura || ''], 8 * d, 8 * d, '#fff');
     texto(g, d, leyenda.filter(Boolean), 8 * d, h - (22 + 13 * leyenda.filter(Boolean).length) * d, '#fff');
     if (E.modo !== 'ct') texto(g, d, ['T ' + num(tope, 0) + ' ' + (p.cab.unidades || ''), 'B 0'], w - 8 * d, h - 50 * d, '#fff', 'right');
@@ -466,29 +576,44 @@
     }
   }
 
-  function pintarMip() {
+  function pintarDerecha() {
     const cv = $('cvMip'), { g, w, h, d } = ajustar(cv);
+    const falta = { mipac: !E.ac, mipnac: !E.nac, axnac: !E.nac };
+    document.querySelectorAll('button.der').forEach(b => { b.classList.toggle('activa', b.dataset.der === E.derecha); b.disabled = E.fase === 'vacio' || falta[b.dataset.der]; b.title = falta[b.dataset.der] && E.fase !== 'vacio' ? 'Este estudio se cargó sin esa serie PET' : ''; });
+    $('giro').disabled = E.fase === 'vacio' || E.derecha === 'axnac';
+    const nombre = { mipac: 'MIP · corregido (AC)', mipnac: 'MIP · sin corregir (NAC)', axnac: 'Axial · sin corregir (NAC)' }[E.derecha];
+    $('rotMip').textContent = nombre;
     if (E.fase === 'vacio') { texto(g, d, ['Sin estudio'], 10 * d, 10 * d, '#667'); return; }
-    const p = pet(), M = E.mip, clave = E.trabajo * 1000 + E.giro;
-    if (M.ang !== clave) { M.ang = clave; M.hechas.fill(0); }
-    for (let i = 0; i < p.n; i++) if (!M.hechas[i] && revelado(i)) { filaMip(p, i, E.giro, M.filas, i * p.cols); M.hechas[i] = 1; }
-    const caja = encajar(w, h, p.cols * p.dx, p.n * p.dz, 22 * d), tope = E.nivelBase * E.nivel;
-    const px = new Uint8ClampedArray(p.cols * p.n * 4);
-    for (let i = 0; i < p.n; i++) for (let x = 0; x < p.cols; x++) {
-      const o = (i * p.cols + x) * 4;
-      const c = revelado(i) ? 255 - 255 * Math.min(1, M.filas[i * p.cols + x] / tope) : 22;
-      px[o] = px[o + 1] = px[o + 2] = c; if (!revelado(i)) px[o + 2] = 34; px[o + 3] = 255;
+    const p = E.derecha === 'mipac' ? E.ac : E.nac;
+    if (!p) { texto(g, d, ['Esta vista necesita la serie PET', E.derecha === 'mipac' ? 'corregida (AC).' : 'sin corregir (NAC).'], w / 2, h / 2 - 12 * d, '#ffd24a', 'center'); return; }
+    if (!FASES_PET.includes(E.fase)) { texto(g, d, ['PET sin adquirir'], w / 2, h / 2 - 6 * d, '#667', 'center'); E.cajaMip = null; return; }
+    if (E.derecha === 'axnac') {
+      const i = E.corte, hay = revelado(i);
+      axialPet(g, w, h, d, p, i, hay); E.cajaMip = null;
+      if (!hay) texto(g, d, [avisoSinPet(i)], w / 2, h / 2 - 6 * d, '#ffd24a', 'center');
+      texto(g, d, [p.desc, 'IMA ' + (i + 1) + ' / ' + p.n, 'SP ' + num(p.zs[i], 1)], 8 * d, 8 * d, '#fff');
+      texto(g, d, ['T ' + num(p.nivelBase * E.nivel, 0) + ' ' + (p.cab.unidades || ''), 'B 0'], w - 8 * d, h - 50 * d, '#fff', 'right');
+      return;
     }
-    volcar(g, px, p.cols, p.n, caja);
+    const M = E.mip, clave = E.derecha + '/' + E.giro + '/' + E.r0 + '/' + E.r1;
+    if (M.clave !== clave) { M.clave = clave; M.hechas.fill(0); }
+    for (let i = E.r0; i <= E.r1; i++) if (!M.hechas[i] && revelado(i)) { filaMip(p, i, E.giro, M.filas, i * p.cols); M.hechas[i] = 1; }
+    const nr = E.r1 - E.r0 + 1, caja = encajar(w, h, p.cols * p.dx, nr * p.dz, 22 * d), tope = p.nivelBase * E.nivel;
+    const px = new Uint8ClampedArray(p.cols * nr * 4);
+    for (let q = 0; q < nr; q++) for (let x = 0; x < p.cols; x++) {
+      const i = E.r0 + q, o = (q * p.cols + x) * 4, hay = revelado(i);
+      const c = hay ? 255 - 255 * Math.min(1, M.filas[i * p.cols + x] / tope) : 22;
+      px[o] = px[o + 1] = px[o + 2] = c; if (!hay) px[o + 2] = 34; px[o + 3] = 255;
+    }
+    volcar(g, px, p.cols, nr, caja);
     E.cajaMip = { caja };
-    const yc = caja.y + (E.corte + 0.5) * caja.h / p.n;
+    const yc = caja.y + (E.corte - E.r0 + 0.5) * caja.h / nr;
     g.strokeStyle = '#d33'; g.lineWidth = d; g.beginPath(); g.moveTo(caja.x, yc); g.lineTo(caja.x + caja.w, yc); g.stroke();
-    const hechos = M.hechas.reduce((a, b) => a + b, 0);
-    texto(g, d, [p.desc, 'MIP ' + E.giro + '°', hechos + ' / ' + p.n + ' cortes'], 8 * d, 8 * d, '#9fb0ff');
-    $('rotMip').textContent = 'MIP';
+    let hechos = 0; for (let i = E.r0; i <= E.r1; i++) hechos += M.hechas[i];
+    texto(g, d, [p.desc, 'MIP ' + E.giro + '°', hechos + ' / ' + nr + ' cortes'], 8 * d, 8 * d, '#9fb0ff');
   }
 
-  function pintar() { pintarTopo(); pintarAxial(); pintarMip(); }
+  function pintar() { pintarTopo(); pintarAxial(); pintarDerecha(); }
 
   // ---------- franja y cronica ----------
   function pintarFranja() {
@@ -498,12 +623,17 @@
     const oculto = $('ocultarId').checked;
     $('identidad').textContent = oculto ? 'Paciente oculto' : [c.nombre, c.id].filter(Boolean).join(' · ');
     const mci = c.dosis ? c.dosis / 3.7e7 : NaN;
-    $('resumen').textContent = num(p.n * p.dz, 1) + ' mm   ' + num(E.total / 60, 0) + ' min   ' + (E.unidadDosis === 'mCi' ? num(mci, 1) + ' mCi' : num(c.dosis / 1e6, 0) + ' MBq');
+    $('resumen').textContent = num(E.largo, 1) + ' mm   ' + num(E.total / 60, 0) + ' min   ' + (E.unidadDosis === 'mCi' ? num(mci, 1) + ' mCi' : num(c.dosis / 1e6, 0) + ' MBq');
   }
 
   function pasos() {
     const l = [];
-    if (E.ct) { l.push({ id: 'topo', nombre: 'Topogram', cajas: [{ t: 'Topograma (proyección del CT)', hecha: true }] }); l.push({ id: 'ct', nombre: 'CT', cajas: [E.ct].concat(E.otrosCt).map(v => ({ t: v.desc, hecha: true })), num: 1 }); l.push({ pausa: true }); }
+    if (E.ct) {
+      const hecho = CT_HECHO.includes(E.fase);
+      l.push({ id: 'topo', nombre: 'Topogram', cajas: [{ t: 'Topograma (proyección del CT)', hecha: true }] });
+      l.push({ id: 'ct', nombre: E.fase === 'ct' ? 'CT ' + hms(E.ctDur - E.relojCt) : 'CT', cajas: [E.ct].concat(E.otrosCt).map(v => ({ t: v.desc, hecha: hecho, encurso: E.fase === 'ct' })), num: 1 });
+      l.push({ pausa: true });
+    }
     const corriendo = E.fase === 'adquiriendo' || E.fase === 'pausa';
     l.push({ id: 'pet', nombre: corriendo ? 'PET ' + hms((E.total - E.reloj)) : 'PET', num: 2, cajas: E.pets.map((v, k) => ({ t: v.desc, hecha: E.fase === 'terminado', encurso: corriendo, actual: k === E.trabajo, trabajo: k })) });
     return l;
@@ -511,13 +641,15 @@
   function pintarCronica() {
     const el = $('cronica');
     if (E.fase === 'vacio') { el.innerHTML = '<div class="paso pausa"><span class="nombre">Sin protocolo cargado</span></div>'; return; }
-    el.innerHTML = pasos().map(p => p.pausa ? '<div class="paso pausa"><span class="nombre">Pause</span></div>' :
+    el.innerHTML = pasos().map(p => p.pausa ? '<div class="paso pausa' + (E.fase === 'entre' ? ' espera' : '') + '"><span class="nombre">Pause</span></div>' :
       '<div class="paso' + (p.id === E.paso ? ' sel' : '') + '" data-paso="' + p.id + '"><span class="nombre">' + esc(p.nombre) + '</span><span class="cajas">' +
       p.cajas.map(c => '<span class="cajita' + (c.hecha ? ' hecha' : '') + (c.encurso ? ' encurso' : '') + (c.actual && p.id === E.paso ? ' actual' : '') + '" title="' + esc(c.t) + '"' + (c.trabajo !== undefined ? ' data-trabajo="' + c.trabajo + '"' : '') + '></span>').join('') +
       '</span><span class="num">' + (p.num || '') + '</span></div>').join('');
     const b = $('btnStart');
-    b.textContent = E.fase === 'adquiriendo' ? 'Suspend' : E.fase === 'pausa' ? 'Resume' : E.fase === 'terminado' ? 'Repeat' : 'Start';
+    b.textContent = { rango: 'Start', ct: 'Scan…', entre: 'Start', adquiriendo: 'Suspend', pausa: 'Resume', terminado: 'New' }[E.fase] || 'Start';
+    b.disabled = E.fase === 'ct';
     b.classList.toggle('rojo', E.fase === 'adquiriendo');
+    $('btnSkip').disabled = E.fase === 'terminado';
   }
 
   // ---------- tarjeta de parametros ----------
@@ -556,7 +688,6 @@
     const mci = c.dosis ? c.dosis / 3.7e7 : NaN;
     const tIny = tmASeg(c.horaIny), tSer = tmASeg(c.horaSerie);
     const espera = (Number.isNaN(tIny) || Number.isNaN(tSer)) ? NaN : ((tSer - tIny + 86400) % 86400) / 60;
-    const iguales = E.ct && Math.abs(E.ct.zs[0] - p.zs[0]) < p.dz && Math.abs(E.ct.zs[E.ct.n - 1] - p.zs[p.n - 1]) < p.dz;
     if (pest === 'routine') return '<div class="rejilla">' +
       bloque('', campo('Isotope', isotopo(c), { ops: Object.values(ISOTOPOS) }) +
         campo('Pharm.', c.farmaco, { ops: ['Fluorodeoxyglucose', 'PSMA', 'DOTATATE', 'Fluoride', 'Choline', 'Germanium'], larga: true }) +
@@ -564,10 +695,11 @@
         campo('Date', fechaDe((c.fechaHoraIny || '').slice(0, 8) || c.fechaSerie), { giro: true }) +
         campo('Time', horaDe(c.horaIny), { giro: true }) +
         campo('Uptake time', Number.isNaN(espera) ? '—' : num(espera, 0), { un: 'min (inyección → inicio del PET)' })) +
-      bloque('', marca2('Scan range: Match CT Range', !!iguales) +
-        campo('No. of beds', E.continuo ? 'continuo' : E.camas.length, { giro: true }) +
+      bloque('', marca2('Scan range: Match CT Range', !!E.ct) +
+        campo('No. of beds', E.continuo ? 'continuo' : E.sel.length, { accion: 'rango', giro: true }) +
         campo('Scan duration/bed', num(E.dur / 60, 1), { ops: ['1.0', '1.5', '2.0', '2.5', '3.0', '4.0'], un: 'min' }) +
-        campo('Range: Begin', num(p.zs[0], 1), { un: 'mm' }) + campo('End', num(p.zs[p.n - 1], 1), { un: 'mm' }) +
+        campo('Range: Begin', num(p.zs[E.r0], 1), { un: 'mm', accion: 'rango', giro: true }) + campo('End', num(p.zs[E.r1], 1), { un: 'mm', accion: 'rango', giro: true }) +
+        campo('Length', num(E.largo, 0), { un: 'mm' }) + campo('Scan time', hms(E.total), { un: 'h:min:s' }) +
         campo('Scan direction', E.sentido, { ops: ['Craniocaudal', 'Caudocranial'] }) +
         campo('Patient position', c.posicion, { ops: ['HFS', 'FFS', 'HFP', 'FFP'] })) + '</div>';
     if (pest === 'scan') return '<div class="rejilla">' +
@@ -583,7 +715,7 @@
       const acCt = (c.atenuacion || '').replace(/^measured,\s*/i, '').trim();
       const disp = /relative/i.test(c.dispersion) ? 'Relative' : /absolute/i.test(c.dispersion) ? 'Absolute' : (c.dispersion || 'None');
       return '<div class="trabajos"><span style="margin-right:8px">Recon job</span>' + trabajos + '<span style="flex:1"></span>' + campo('Series description', p.desc, { larga: true }) + '</div><div class="rejilla">' +
-        bloque('', campo('Recon range: Begin', E.camas.length ? 1 : '—', { giro: true }) + campo('End', E.camas.length || '—', { giro: true }) +
+        bloque('', campo('Recon range: Begin', E.sel.length ? 1 : '—', { giro: true }) + campo('End', E.sel.length || '—', { giro: true }) +
           campo('Output image type', tipo, { ops: ['Corrected', 'Uncorrected'] }) +
           campo('Recon method', m.metodo, { ops: ['FBP', 'OSEM3D', 'OSEM3D+TOF', 'PSF', 'PSF+TOF'], larga: true }) +
           campo('Iterations', m.it, { ops: [1, 2, 3, 4, 5, 6, 8] }) + campo('Subsets', m.sub, { ops: [8, 10, 12, 20, 21, 24] })) +
@@ -610,12 +742,14 @@
         campo('Tube current', num(v.maMedio, 0), { un: 'mA, medio' }) + campo('CTDIvol', num(v.ctdiMedio, 2), { un: 'mGy, medio' }) +
         campo('Patient position', c.posicion, { ops: ['HFS', 'FFS', 'HFP', 'FFP'] })) +
       bloque('', campo('Slice', num(c.grosor, 1), { ops: ['1.0', '1.5', '2.0', '3.0', '4.0', '5.0'], un: 'mm' }) +
-        campo('Pitch', num(c.paso, 2), { giro: true }) + campo('No. of images', v.n, { giro: true }) +
-        campo('Range: Begin', num(v.zs[0], 1), { un: 'mm' }) + campo('End', num(v.zs[v.n - 1], 1), { un: 'mm' })) + '</div>';
+        campo('Pitch', num(c.paso, 2), { giro: true }) + campo('No. of images', E.r1 - E.r0 + 1, { accion: 'rango', giro: true }) +
+        campo('Range: Begin', num(E.pets[0].zs[E.r0], 1), { un: 'mm', accion: 'rango', giro: true }) + campo('End', num(E.pets[0].zs[E.r1], 1), { un: 'mm', accion: 'rango', giro: true }) +
+        campo('Length', num(E.largo, 0), { un: 'mm' }) + campo('Scan time', num(E.ctDur, 1), { un: E.ctDurReal ? 's' : 's (sin dato de velocidad de mesa)' })) + '</div>';
     if (pest === 'scan') return '<div class="rejilla">' +
       bloque('', campo('Exposure time', num(c.tExp, 0), { un: 'ms' }) + campo('Tube current', num(v.maMedio, 0), { un: 'mA, medio' }) +
         campo('Filter type', c.filtro) + campo('Scanner', [c.fabricante, c.modelo].filter(Boolean).join(' '), { larga: true })) +
-      bloque('', campo('Scan start', 'Start button', { ops: ['Start button', 'Delay'] }) + campo('Direction', E.sentido === '—' ? 'Craniocaudal' : E.sentido, { ops: ['Craniocaudal', 'Caudocranial'] })) + '</div>';
+      bloque('', campo('Scan start', 'Start button', { ops: ['Start button', 'Delay'] }) + campo('Direction', E.ctSentido, { ops: ['Craniocaudal', 'Caudocranial'] }) +
+        campo('Table speed', num(c.velMesa, 1), { un: 'mm/s' })) + '</div>';
     if (pest === 'recon') return '<div class="rejilla">' +
       bloque('', campo('Series description', v.desc, { larga: true }) + campo('Slice', num(c.grosor, 1), { ops: ['1.0', '1.5', '2.0', '3.0', '4.0', '5.0'], un: 'mm' }) +
         campo('Kernel', c.nucleo, { ops: ['B20s', 'B31s', 'B41s', 'B60s', 'B70s'] }) + campo('Window', ventanas || '—', { larga: true })) +
@@ -656,17 +790,17 @@
     const xDe = t => mi + (W - mi - 8) * t / E.total, yDe = v => ms + (H - ms - mb) * (1 - v / 110);
     g.textAlign = 'center'; g.textBaseline = 'top';
     for (let t = 0; t <= E.total; t += Math.max(60, Math.round(E.total / 8 / 60) * 60)) g.fillText(Math.round(t / 60) + ' min', xDe(t), H - mb + 4);
-    if (!E.camas.length) return;
-    const hasta = (E.fase === 'listo') ? 0 : E.reloj;
+    if (!E.sel.length) return;
+    const enPet = FASES_PET.includes(E.fase), hasta = enPet ? E.reloj : 0;
     g.strokeStyle = '#1a9a3c'; g.lineWidth = 2; g.beginPath(); let abierto = false;
-    E.camas.forEach(c => {
-      if (c.t > hasta) return;
-      const fin = Math.min(c.t + E.dur, hasta);
-      if (!abierto) { g.moveTo(xDe(c.t), yDe(c.tasa)); abierto = true; } else g.lineTo(xDe(c.t), yDe(c.tasa));
+    E.sel.forEach(c => {
+      if (c.ts > hasta || !enPet) return;
+      const fin = Math.min(c.ts + E.dur, hasta);
+      if (!abierto) { g.moveTo(xDe(c.ts), yDe(c.tasa)); abierto = true; } else g.lineTo(xDe(c.ts), yDe(c.tasa));
       g.lineTo(xDe(fin), yDe(c.tasa));
     });
     g.stroke();
-    if (E.fase !== 'listo') { g.strokeStyle = '#d33'; g.lineWidth = 1; g.beginPath(); g.moveTo(xDe(hasta), ms); g.lineTo(xDe(hasta), H - mb); g.stroke(); }
+    if (enPet) { g.strokeStyle = '#d33'; g.lineWidth = 1; g.beginPath(); g.moveTo(xDe(hasta), ms); g.lineTo(xDe(hasta), H - mb); g.stroke(); }
   }
 
   function refrescarTodo() { pintarFranja(); pintarCronica(); pintarTarjeta(); pintar(); }
@@ -683,13 +817,49 @@
     l.dataset.et = caja.dataset.et; l.dataset.valor = real; E.cajaAbierta = caja;
   }
   function fijo(et, valor, caja, pedido) {
-    const donde = E.fase === 'terminado' ? 'la serie ya fue reconstruida' : 'el examen ya quedó programado con ese valor';
+    const donde = E.fase === 'terminado' ? 'la serie ya fue reconstruida' : 'el protocolo de este examen ya trae ese valor';
     decir('«' + et + '» se mantiene en ' + valor + (pedido ? ' (no en ' + pedido + ')' : '') + ': ' + donde + ' y los datos crudos no vienen en el DICOM.', true);
     if (caja) { caja.classList.remove('parpadeo'); void caja.offsetWidth; caja.classList.add('parpadeo'); }
   }
 
   // ---------- eventos ----------
-  function moverCorte(i) { if (E.fase === 'vacio') return; E.corte = Math.max(0, Math.min(pet().n - 1, i)); pintar(); }
+  function moverCorte(i) { if (E.fase === 'vacio' || E.fase === 'rango') return; E.corte = Math.max(E.r0, Math.min(E.r1, i)); pintar(); }
+
+  // Arrastre del rango sobre el topograma: cada borde salta al borde de cama mas cercano.
+  let arrastre = null;
+  const yLienzo = (cv, ev) => (ev.clientY - cv.getBoundingClientRect().top) * cv.height / cv.getBoundingClientRect().height;
+  function cercaDe(cv, ev) {
+    const T = E.cajaTopo; if (!T || E.fase !== 'rango') return null;
+    const y = yLienzo(cv, ev), m = 12 * cv.height / cv.getBoundingClientRect().height;
+    if (Math.abs(y - T.yA) <= m && Math.abs(y - T.yA) <= Math.abs(y - T.yB)) return 'sup';
+    if (Math.abs(y - T.yB) <= m) return 'inf';
+    return (y > T.yA && y < T.yB) ? 'mover' : null;
+  }
+  function arrastrar(cv, ev) {
+    const T = E.cajaTopo, y = yLienzo(cv, ev), p = E.pets[0];
+    const mejor = (lista, f) => { let m = lista[0]; lista.forEach(k => { if (Math.abs(f(k) - y) < Math.abs(f(m) - y)) m = k; }); return m; };
+    const serie = (a, b) => Array.from({ length: b - a + 1 }, (_, k) => a + k);
+    const antes = E.r0 + '/' + E.r1;
+    if (E.continuo) {
+      const corte = Math.max(0, Math.min(p.n - 1, Math.round((y - T.caja.y) / T.caja.h * p.n)));
+      if (arrastre.que === 'sup') fijarCortes(Math.min(corte, E.r1 - 4), E.r1);
+      else if (arrastre.que === 'inf') fijarCortes(E.r0, Math.max(corte, E.r0 + 4));
+      else { const n = arrastre.r1 - arrastre.r0, r0 = Math.max(0, Math.min(p.n - 1 - n, arrastre.r0 + corte - arrastre.corte)); fijarCortes(r0, r0 + n); }
+    } else {
+      const n = E.espacial.length;
+      if (arrastre.que === 'sup') fijarRango(mejor(serie(0, E.b1), k => T.ySup(E.espacial[k].c0)), E.b1);
+      else if (arrastre.que === 'inf') fijarRango(E.b0, mejor(serie(E.b0, n - 1), k => T.yInf(E.espacial[k].c1)));
+      else {
+        const centro = k => (T.ySup(E.espacial[k].c0) + T.yInf(E.espacial[k].c1)) / 2, ancho = arrastre.b1 - arrastre.b0;
+        const b0 = Math.max(0, Math.min(n - 1 - ancho, arrastre.b0 + mejor(serie(0, n - 1), centro) - arrastre.cama));
+        fijarRango(b0, b0 + ancho);
+      }
+    }
+    if (antes !== E.r0 + '/' + E.r1) {
+      decir(E.continuo ? 'Rango: ' + num(E.largo, 0) + ' mm.' : 'Rango: camas ' + (E.b0 + 1) + ' a ' + (E.b1 + 1) + ' (' + E.sel.length + ' de ' + E.espacial.length + '), ' + num(E.largo, 0) + ' mm, PET de ' + num(E.total / 60, 1) + ' min.');
+      pintarFranja(); pintarTarjeta(); pintar();
+    }
+  }
   function lecturaAxial(ev) {
     if (E.fase === 'vacio' || !E.cajaAxial) return;
     const cv = $('cvAxial'), r = cv.getBoundingClientRect(), k = cv.width / r.width, A = E.cajaAxial, p = pet();
@@ -705,7 +875,7 @@
         const dec = (c.vidaMedia && !Number.isNaN(tI) && !Number.isNaN(tS)) ? Math.exp(-LN2 * ((tS - tI + 86400) % 86400) / c.vidaMedia) : 1;
         t += '   SUVbw ' + num(v / (c.dosis * dec / (c.peso * 1000)), 2);
       }
-    } else if (E.modo === 'ct' && E.ct && E.ct.dePet[E.corte] >= 0) {
+    } else if (E.modo === 'ct' && ctVisible(E.corte)) {
       const ct = E.ct, cx = Math.floor((fx - (ct.x0 - ct.dx / 2)) / ct.dx), cy = Math.floor((fy - (ct.y0 - ct.dy / 2)) / ct.dy);
       if (cx >= 0 && cy >= 0 && cx < ct.cols && cy < ct.rows) t = ct.vol[(ct.dePet[E.corte] * ct.rows + cy) * ct.cols + cx] + ' HU';
     }
@@ -714,7 +884,7 @@
   function clicVertical(cv, cajaInfo, ev) {
     if (E.fase === 'vacio' || !cajaInfo) return;
     const r = cv.getBoundingClientRect(), y = (ev.clientY - r.top) * cv.height / r.height, c = cajaInfo.caja;
-    moverCorte(Math.floor((y - c.y) / c.h * pet().n));
+    moverCorte(E.r0 + Math.floor((y - c.y) / c.h * (E.r1 - E.r0 + 1)));
   }
 
   function enlazar() {
@@ -726,24 +896,43 @@
     $('btnAcerca').onclick = () => { $('acerca').hidden = false; };
     $('cerrarAcerca').onclick = () => { $('acerca').hidden = true; };
     $('btnStart').onclick = () => { if (E.fase === 'adquiriendo') pausar(); else iniciar(); };
-    $('btnSkip').onclick = terminar;
+    $('btnSkip').onclick = saltar;
+    document.querySelectorAll('button.der').forEach(b => { b.onclick = () => { E.derecha = b.dataset.der; pintarDerecha(); }; });
+    const topo = $('cvTopo');
+    topo.addEventListener('pointerdown', ev => {
+      const que = cercaDe(topo, ev);
+      if (que) {
+        const T = E.cajaTopo, y = yLienzo(topo, ev), p = E.pets[0];
+        let cama = 0; E.espacial.forEach((c, k) => { const m = (T.ySup(c.c0) + T.yInf(c.c1)) / 2, a = (T.ySup(E.espacial[cama].c0) + T.yInf(E.espacial[cama].c1)) / 2; if (Math.abs(m - y) < Math.abs(a - y)) cama = k; });
+        arrastre = { que, b0: E.b0, b1: E.b1, r0: E.r0, r1: E.r1, cama, corte: Math.round((y - T.caja.y) / T.caja.h * p.n) };
+        try { topo.setPointerCapture(ev.pointerId); } catch (e) { } ev.preventDefault();
+      } else if (E.fase !== 'rango' && E.cajaTopo) {
+        const T = E.cajaTopo, p = E.pets[0];
+        moverCorte(Math.floor((yLienzo(topo, ev) - T.caja.y) / T.caja.h * p.n));
+      }
+    });
+    topo.addEventListener('pointermove', ev => {
+      if (arrastre) { arrastrar(topo, ev); return; }
+      const que = cercaDe(topo, ev);
+      topo.style.cursor = que === 'mover' ? 'grab' : que ? 'ns-resize' : 'default';
+    });
+    ['pointerup', 'pointercancel'].forEach(n => topo.addEventListener(n, () => { arrastre = null; }));
     $('vel').onchange = ev => { E.vel = +ev.target.value; };
     $('ocultarId').onchange = pintarFranja;
     $('corte').oninput = ev => moverCorte(+ev.target.value);
-    $('giro').oninput = ev => { E.giro = +ev.target.value; pintarMip(); };
+    $('giro').oninput = ev => { E.giro = +ev.target.value; pintarDerecha(); };
     $('nivel').oninput = ev => { E.nivel = +ev.target.value / 100; pintar(); };
-    document.querySelectorAll('button.modo').forEach(b => { b.onclick = () => { E.modo = b.dataset.modo; pintar(); }; });
+    document.querySelectorAll('button.modo.izq').forEach(b => { b.onclick = () => { E.modo = b.dataset.modo; pintar(); }; });
     document.querySelectorAll('.pestana').forEach(b => { b.onclick = () => { E.pestana = b.dataset.pestana; pintarTarjeta(); }; });
     $('cvAxial').addEventListener('wheel', ev => { ev.preventDefault(); moverCorte(E.corte + (ev.deltaY > 0 ? 1 : -1)); }, { passive: false });
     $('cvAxial').addEventListener('mousemove', lecturaAxial);
-    $('cvTopo').addEventListener('click', ev => clicVertical($('cvTopo'), E.cajaTopo, ev));
     $('cvMip').addEventListener('click', ev => clicVertical($('cvMip'), E.cajaMip, ev));
     $('cronica').addEventListener('click', ev => {
       const c = ev.target.closest('.cajita'), p = ev.target.closest('.paso');
       if (!p || !p.dataset.paso) return;
       E.paso = p.dataset.paso;
       if (c && c.dataset.trabajo !== undefined) { E.trabajo = +c.dataset.trabajo; E.pestana = 'recon'; }
-      if (E.paso === 'ct' || E.paso === 'topo') { if (E.modo === 'pet') E.modo = 'ct'; } else if (E.modo === 'ct') E.modo = 'pet';
+      if (E.paso === 'ct' || E.paso === 'topo') { if (E.modo === 'pet') E.modo = 'ct'; } else if (E.modo === 'ct' && FASES_PET.includes(E.fase)) E.modo = 'pet';
       refrescarTodo();
     });
     $('contenido').addEventListener('click', ev => {
@@ -751,6 +940,11 @@
       if (t) { const k = +t.dataset.trabajo; if (k < E.pets.length) { E.trabajo = k; refrescarTodo(); decir('Trabajo de reconstrucción ' + (k + 1) + ': ' + pet().desc + '.'); } else decir('El trabajo de reconstrucción ' + (k + 1) + ' está vacío: este estudio trae ' + E.pets.length + ' serie(s) PET.', true); return; }
       const caja = ev.target.closest('[data-et]');
       if (!caja) return;
+      if (caja.dataset.accion === 'rango') {
+        if (E.fase === 'rango') decir('El rango se ajusta arrastrando sus bordes sobre el topograma. ' + (E.continuo ? '' : 'Salta de cama en cama: no puede quedar a la mitad de una.'), true);
+        else fijo(caja.dataset.et, caja.dataset.valor, caja);
+        return;
+      }
       if (caja.dataset.accion === 'unidad') { E.unidadDosis = E.unidadDosis === 'mCi' ? 'MBq' : 'mCi'; pintarFranja(); pintarTarjeta(); decir('La actividad se muestra en ' + E.unidadDosis + '. Es el mismo valor de la cabecera, en otra unidad.'); return; }
       if (caja.dataset.ops) { ev.stopPropagation(); abrirLista(caja); return; }
       if (caja.dataset.giro) fijo(caja.dataset.et, caja.dataset.valor, caja.classList.contains('caja') ? caja : null);
@@ -774,5 +968,5 @@
 
   window.addEventListener('error', ev => { (window.__errores = window.__errores || []).push(String(ev.message)); });
   enlazar(); refrescarTodo();
-  window.ConsolaPet = { estado: E, cargar, iniciar, pausar, terminar, revelado, camaActual };
+  window.ConsolaPet = { estado: E, cargar, iniciar, pausar, saltar, terminar, planificar, fijarRango, revelado, ctVisible, camaActual };
 })();

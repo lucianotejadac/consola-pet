@@ -28,3 +28,25 @@ Participantes: Luciano Tejada (docente) y Claude (Claude Code).
 - No lee DICOM comprimido.
 - El campo axial por cama es una estimación por lo bajo (160 mm para un equipo de 164 mm).
 - Tutorial y preguntas: el docente pidió partir sin ellos.
+
+## 2026-09-27 · Segunda ronda: topograma, rango por camas, CT y después PET
+
+Participantes: Luciano Tejada (docente) y Claude (Claude Code).
+
+**Contexto.** La primera versión mostraba todo el estudio planificado y solo reproducía el PET. El docente pidió que el simulador parta solo con el topograma, que el estudiante establezca el rango de adquisición respetando las camas (el rango no puede quedar a la mitad de una), que se adquiera el CT y después se pase al PET, y que la ventana derecha permita ver la serie sin corrección de atenuación para comparar.
+
+**Decisiones.**
+- **Etapas**: rango → CT → pausa → PET → terminado. Start inicia la etapa siguiente; en la pausa la consola espera con el CT a la vista, como en el protocolo real (Topogram, CT, Pause, PET). Skip salta la etapa en curso. Al terminar, el botón pasa a New y vuelve al topograma.
+- **El rango se arrastra sobre el topograma y salta de cama en cama.** El borde superior solo puede caer en el inicio de una cama y el inferior en el final de una; arrastrar el centro desplaza el rango completo de a una cama. Las camas que quedan fuera se dibujan punteadas. El largo, el número de camas y la duración del PET se actualizan al soltar.
+- **Las camas disponibles son las del estudio.** Las imágenes ya existen, así que el rango puede abarcar cualquier tramo contiguo de esas camas, pero no inventar otras ni moverlas. Los cortes del traslape entre una cama elegida y una vecina que quedó fuera se muestran igual, aunque en el original mezclan cuentas de las dos.
+- **Rango inicial: la mitad superior de las camas** (4 de 8 en el caso de prueba), para que el estudiante tenga que decidir. Descartado: partir con el rango completo, porque no habría nada que planificar.
+- **El CT se reproduce con su duración real**: largo del rango dividido por la velocidad de mesa de la cabecera (48 mm/s en el caso de prueba), en el sentido en que se adquirió (caudocraneal, según la hora de cada corte). Como dura segundos, salvo en tiempo real se muestra en al menos 4 s. Si la cabecera no trae velocidad de mesa se usan 10 s y la tarjeta lo dice.
+- **Ventana derecha con tres vistas**: MIP corregido, MIP sin corregir y axial sin corregir. El axial sin corregir sigue el corte de la ventana central. Cada serie usa su propio nivel, porque el PET sin corregir viene en otras unidades.
+- **Antes de Start no se muestra ningún corte** de CT ni de PET, y los modos y el selector de corte quedan bloqueados.
+- **Con camilla en movimiento continuo** no hay camas: el rango se fija por cortes.
+
+**Validación.** Prueba sin interfaz con MSB-00556 en tres formas de carga (carpetas con AC, NAC y CT: 32 comprobaciones; dos ZIP: 30; solo PET: 24), todas correctas, a 1366 × 768. Se comprueba que al arrastrar el borde inferior pixel por pixel el rango siempre coincide con el final de una cama; que soltar a la mitad de la cama 6 deja el borde al final de la 5; que el borde superior no cruza al inferior; que durante el CT hay cortes de CT y ninguno de PET; que el CT y el PET no muestran nada fuera del rango; que el MIP sin corregir difiere del corregido y que el axial sin corregir cambia junto con el central.
+
+**Pendiente.**
+- La hora de inyección y el tiempo de captación son los del estudio original: no se recalculan si el rango parte en otra cama.
+- Probar el arrastre en pantalla táctil.
