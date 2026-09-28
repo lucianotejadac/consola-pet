@@ -95,3 +95,22 @@ Participantes: Luciano Tejada (docente) y Claude (Claude Code).
 - El factor 1,5 con que se corrige el ruido medido del PET es una estimación; no está contrastado con un maniquí.
 - La simulación es plano a plano: no correlaciona el ruido entre cortes ni degrada la resolución en el eje Z.
 - Probar con estudios de otros equipos.
+
+## 2026-09-28 · Quinta ronda: paso a Volumina
+
+Participantes: Luciano Tejada (docente) y Claude (Claude Code).
+
+**Contexto.** El docente pidió un botón «Pasar a Volumina» e integrar en este simulador el visor Volumina, basado en el que se usó para paratiroides, sin las opciones de cargar estudio porque ya está cargado, y adaptado para PET.
+
+**Decisiones.**
+- **Volumina va dentro de este repositorio**, en `volumina/`, como copia adaptada de `visor_dicom` en su estado del tutorial de paratiroides. Se abre sobre la consola en un marco del mismo origen y la consola le entrega los volúmenes desde la memoria. Descartado: enlazar al visor publicado, que obligaría a cargar los archivos otra vez y no conocería el rango elegido.
+- **La copia se arma con un guion** (`armar_volumina.py`, fuera del repositorio) que copia los archivos y aplica las adaptaciones, para poder repetirlo si Volumina cambia. El motor (`core.js`), el reformateo y la escritura DICOM quedan idénticos.
+- **Sin carga**: se quitan Abrir CT, Abrir SPECT, la demo, el arrastrar y soltar y el tutorial de paratiroides. En su lugar hay un botón para volver a la consola.
+- **Qué recibe**: el rango adquirido, con el CT y todas las series PET, tal como están en la consola. Si hay parámetros simulados llegan esas imágenes y el visor lo avisa. El CT llega reducido a 256 de lado, que es como lo guarda la consola.
+- **Adaptaciones para PET**: textos en PET; la escala parte del nivel de la consola y no del máximo del volumen, que suele ser la vejiga; umbrales de medio punto porcentual; paleta en gris invertido con fondo blanco y MIP en vista anterior por omisión; selector de serie PET para pasar de la corregida a la sin corregir; el PET también se puede ver solo como volumen base; SUV si la cabecera trae peso y actividad, y si no, el visor dice por qué no lo muestra.
+- **Se habilita con el examen terminado.** En un examen nuevo vuelve a quedar bloqueado.
+- **Identidad**: si la consola tiene la identidad oculta, Volumina recibe el estudio sin nombre ni identificador.
+
+**Validación.** 76, 73 y 47 comprobaciones correctas según la forma de carga, con WebGL2 activo. Se comprueba que no queda ningún control de carga visible; que CT y PET llegan con los cortes del rango; que un mismo vóxel vale lo mismo en la consola y en el visor (5694,9 Bq/ml y 48 HU); que la fusión queda activa y alineada; que se puede cambiar a la serie sin corregir y ver el PET solo; que los tres planos tienen imagen; y que con parámetros simulados el visor recibe esas imágenes y lo avisa.
+
+**Pendiente.** Pasar el CT a resolución completa exigiría conservar 100 MB más en memoria.

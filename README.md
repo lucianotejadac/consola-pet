@@ -12,7 +12,8 @@ Simulador docente que presenta un PET/CT ya reconstruido como si se acabara de a
 6. Las pestañas **Routine**, **Scan**, **Recon** y **Auto Tasking** muestran los parámetros como controles de consola.
 7. Después de adquirir, los parámetros **en azul** se pueden cambiar y la imagen muestra el efecto, simulado: tiempo por cama, actividad, tiempo de captación, iteraciones y filtro en el PET; mAs de referencia, modulación de dosis, kV, grosor de corte y núcleo en el CT. Lo adquirido es el techo de calidad: los controles solo ofrecen ese valor o valores que degradan la imagen. El botón **Original** de la ventana derecha muestra la misma vista tal como se adquirió.
 8. Las listas en gris son ilustrativas: se abren y dejan ver otras opciones, pero no cambian nada.
-9. **New** vuelve al topograma para planificar otro rango.
+9. **Pasar a Volumina** abre el visor con el CT y el PET adquiridos, sin volver a cargar archivos: cortes en los tres planos, fusión, MIP y VRT, y generación de cortes.
+10. **New** vuelve al topograma para planificar otro rango.
 
 La simulación usa modelos sencillos sobre la imagen ya reconstruida y sirve para ver la dirección y el orden de magnitud de cada cambio, no para predecir lo que entregaría el equipo. Los valores mínimos de las listas son pisos del simulador y pueden no corresponder a los de un equipo real.
 
@@ -28,6 +29,7 @@ El caso de prueba es público: paciente MSB-00556 de la colección CMB-LCA de Th
 
 - `index.html`, `consola.css`, `consola.js`: la página completa, sin compilación.
 - `vendor/dicomParser.min.js`: dicom-parser 1.8.12, licencia MIT.
+- `volumina/`: copia adaptada del visor Volumina (repositorio `visor_dicom`), sin opciones de carga y con textos y escalas para PET. `consola-puente.js` recibe el estudio desde la consola.
 - `BITACORA.md`: decisiones de cada ronda de trabajo.
 
 Uso docente. No es una consola real ni un visor validado para diagnóstico, y no está afiliado a ningún fabricante.

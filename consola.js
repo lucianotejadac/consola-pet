@@ -123,6 +123,7 @@
     const c = {
       fabricante: s('x00080070'), modelo: s('x00081090'), software: s('x00181020'),
       estudio: s('x00081030'), serie: s('x0008103e'), protocolo: s('x00181030'),
+      marco: s('x00200052'), estudioUid: s('x0020000d'), estudioId: s('x00200010'), sopClass: s('x00080016'), horaEstudio: s('x00080030'),
       id: s('x00100020'), nombre: s('x00100010'), sexo: s('x00100040'), edad: s('x00101010'),
       peso: f('x00101030'), talla: f('x00101020'), posicion: s('x00185100'), parte: s('x00180015'),
       fechaEstudio: s('x00080020'), fechaSerie: s('x00080021'), fechaAdq: s('x00080022'),
@@ -887,7 +888,7 @@
   }
   function pintarCronica() {
     const el = $('cronica');
-    if (E.fase === 'vacio') { el.innerHTML = '<div class="paso pausa"><span class="nombre">Sin protocolo cargado</span></div>'; return; }
+    if (E.fase === 'vacio') { el.innerHTML = '<div class="paso pausa"><span class="nombre">Sin protocolo cargado</span></div>'; $('btnVolumina').disabled = true; return; }
     el.innerHTML = pasos().map(p => p.pausa ? '<div class="paso pausa' + (E.fase === 'entre' ? ' espera' : '') + '"><span class="nombre">Pause</span></div>' :
       '<div class="paso' + (p.id === E.paso ? ' sel' : '') + '" data-paso="' + p.id + '"><span class="nombre">' + esc(p.nombre) + '</span><span class="cajas">' +
       p.cajas.map(c => '<span class="cajita' + (c.hecha ? ' hecha' : '') + (c.encurso ? ' encurso' : '') + (c.actual && p.id === E.paso ? ' actual' : '') + '" title="' + esc(c.t) + '"' + (c.trabajo !== undefined ? ' data-trabajo="' + c.trabajo + '"' : '') + '></span>').join('') +
@@ -897,6 +898,7 @@
     b.disabled = E.fase === 'ct';
     b.classList.toggle('rojo', E.fase === 'adquiriendo');
     $('btnSkip').disabled = E.fase === 'terminado';
+    $('btnVolumina').disabled = E.fase !== 'terminado';
   }
 
   // ---------- tarjeta de parametros ----------
@@ -1127,6 +1129,53 @@
     });
   }
 
+  // ---------- paso a Volumina ----------
+  // Volumina recibe lo que la consola tiene en memoria: el rango adquirido, con los cortes
+  // ordenados de caudal a craneal, y las imagenes tal como se ven (simuladas si hay cambios).
+  let voluminaCargada = false, voluminaEnviado = '';
+  function estudioParaVolumina() {
+    const oculto = $('ocultarId').checked, base = E.pets[0].cab, nz = E.r1 - E.r0 + 1;
+    const comun = c => ({ marco: c.marco, pacienteId: oculto ? 'OCULTO' : (base.id || 'CONSOLA-PET'), pacienteNombre: oculto ? '' : base.nombre, estudioUid: c.estudioUid, estudioId: c.estudioId, fecha: c.fechaEstudio, hora: c.horaEstudio, sopClass: c.sopClass });
+    const pets = E.pets.map(v => {
+      const N = v.rows * v.cols, datos = new Float32Array(nz * N), vol = v.sim || v.vol, c = v.cab;
+      for (let k = 0; k < nz; k++) { const i = E.r1 - k; datos.set(vol.subarray(i * N, (i + 1) * N), k * N); }
+      let suv = 0;
+      if (c.unidades === 'BQML' && c.peso > 0 && c.dosis > 0) { const t = captacionDe(c); suv = c.dosis * (c.vidaMedia > 0 && !Number.isNaN(t) ? Math.exp(-LN2 * t * 60 / c.vidaMedia) : 1) / (c.peso * 1000); }
+      return Object.assign(comun(c), { nx: v.cols, ny: v.rows, nz, spacing: [v.dx, v.dy, v.dz], origin: [v.x0, v.y0, v.zs[E.r1]], datos, modalidad: 'PT', unidades: c.unidades,
+        descripcion: v.desc + (v.sim ? ' · simulado' : ''), simulado: !!v.sim, tope: v.nivelBase * E.nivel, suv });
+    });
+    let ct = null;
+    if (E.ct) {
+      const v = E.ct, N = v.rows * v.cols, js = [];
+      for (let i = E.r1; i >= E.r0; i--) { const j = v.dePet[i]; if (j >= 0 && !js.includes(j)) js.push(j); }
+      js.sort((a, b) => v.zs[a] - v.zs[b]);
+      if (js.length >= 2) {
+        const datos = new Float32Array(js.length * N);
+        js.forEach((j, k) => { const c = ctCorteSim(j); if (c) datos.set(c, k * N); else for (let q = 0; q < N; q++) datos[k * N + q] = v.vol[j * N + q]; });
+        ct = Object.assign(comun(v.cab), { nx: v.cols, ny: v.rows, nz: js.length, spacing: [v.dx, v.dy, v.dz], origin: [v.x0, v.y0, v.zs[js[0]]], datos, modalidad: 'CT', unidades: 'HU',
+          descripcion: v.desc + (ctCambiado() ? ' · simulado' : ''), simulado: ctCambiado(), ventana: 400, nivelCt: 40 });
+      }
+    }
+    const sim = pets.some(q => q.simulado) || (ct && ct.simulado);
+    return { ct, pets, nota: sim ? 'Las imágenes traen parámetros simulados en la consola: no son las adquiridas.' : 'Imágenes tal como se adquirieron.' };
+  }
+  function enviarAVolumina() {
+    const w = $('marcoVolumina').contentWindow;
+    if (!voluminaCargada || !w || !w.ConsolaPuente) return;
+    const clave = E.pets[0].uid + '/' + E.r0 + '/' + E.r1 + '/' + E.simVer + '/' + E.nivel + '/' + $('ocultarId').checked;
+    if (clave === voluminaEnviado) return;
+    w.ConsolaPuente.recibir(estudioParaVolumina()); voluminaEnviado = clave;
+  }
+  function voluminaLista() { voluminaCargada = true; if (!$('capaVolumina').hidden) enviarAVolumina(); }
+  function abrirVolumina() {
+    if (E.fase !== 'terminado') { decir('Volumina se abre cuando termina el examen: primero adquiere el CT y el PET.', true); return; }
+    $('capaVolumina').hidden = false;
+    const m = $('marcoVolumina');
+    if (!m.getAttribute('src')) m.setAttribute('src', 'volumina/index.html?v=1'); else enviarAVolumina();
+    decir('Estudio enviado a Volumina: ' + (E.ct ? 'CT y ' : '') + E.pets.length + ' serie(s) PET, ' + (E.r1 - E.r0 + 1) + ' cortes.');
+  }
+  function cerrarVolumina() { $('capaVolumina').hidden = true; decir('De vuelta en la consola. El estudio sigue cargado.'); pintar(); }
+
   function refrescarTodo() { pintarFranja(); pintarCronica(); pintarTarjeta(); pintar(); }
 
   // ---------- listas que ya no se pueden cambiar ----------
@@ -1224,6 +1273,7 @@
     $('cerrarAcerca').onclick = () => { $('acerca').hidden = true; };
     $('btnStart').onclick = () => { if (E.fase === 'adquiriendo') pausar(); else iniciar(); };
     $('btnSkip').onclick = saltar;
+    $('btnVolumina').onclick = abrirVolumina;
     document.querySelectorAll('button.der').forEach(b => { b.onclick = () => { E.derecha = b.dataset.der; pintarDerecha(); }; });
     const topo = $('cvTopo');
     topo.addEventListener('pointerdown', ev => {
@@ -1301,5 +1351,5 @@
 
   window.addEventListener('error', ev => { (window.__errores = window.__errores || []).push(String(ev.message)); });
   enlazar(); refrescarTodo();
-  window.ConsolaPet = { estado: E, dosisCt, opciones, aplicarSim, restaurar, fraccionCuentas, epsCt, ctCorteSim, ctFactores, cargar, iniciar, pausar, saltar, terminar, planificar, fijarRango, revelado, ctVisible, camaActual };
+  window.ConsolaPet = { estado: E, abrirVolumina, cerrarVolumina, voluminaLista, estudioParaVolumina, dosisCt, opciones, aplicarSim, restaurar, fraccionCuentas, epsCt, ctCorteSim, ctFactores, cargar, iniciar, pausar, saltar, terminar, planificar, fijarRango, revelado, ctVisible, camaActual };
 })();
