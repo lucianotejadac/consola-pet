@@ -69,3 +69,29 @@ Participantes: Luciano Tejada (docente) y Claude (Claude Code).
 **Validación.** Con MSB-00556: modulación On, tipo XYZ_EC, ahorro 48,6 %, Ref. mAs 125; en un rango de 500 mm, mAs efectivo 70 (54 a 90), 176 mA, CTDIvol 4,95 mGy y DLP 248 mGy·cm; en el rango completo, DLP 359 mGy·cm. Casos simulados sobre el mismo estudio: sin etiquetas de modulación ni de ahorro (se deduce On, Ref. mAs 90), con corriente constante (Off) y sin datos de corriente (campos en raya, sin errores). 40, 38 y 24 comprobaciones correctas según la forma de carga.
 
 **Pendiente.** Las pruebas de otros fabricantes son simuladas: falta cargar un CT real de otro equipo.
+
+## 2026-09-28 · Cuarta ronda: parámetros que cambian la calidad de imagen
+
+Participantes: Luciano Tejada (docente) y Claude (Claude Code).
+
+**Contexto.** El docente pidió simular otros parámetros que afectan la calidad de imagen del CT y del PET, tomando como tope lo que ya está (por ejemplo, 2 minutos por cama como máximo y de ahí hacia abajo), como en la consola TC. Respuestas a la ronda de confirmación: nada que suba por sobre lo adquirido; todos los cambios son posteriores a la adquisición; sí a comparar con el original; sí a simular el efecto del CT sobre el PET corregido; pisos razonables, pero dicho explícitamente que son simulados y pueden no corresponder a la realidad.
+
+**Decisiones.**
+- **Regla, la misma de la consola TC: la adquisición real es el techo de calidad.** Cada control ofrece el valor del estudio y valores que degradan; una prueba automática comprueba que ninguna opción queda del lado que mejora. Los topes se leen de la cabecera de cada estudio.
+- **Parámetros vivos.** PET: tiempo por cama, actividad, tiempo de captación (solo más largo), iteraciones, filtro (solo más ancho). CT: mAs de referencia, modulación de dosis, kV (solo menor), grosor de corte (solo mayor), núcleo (solo más suave). Se distinguen en azul; los ilustrativos quedan en gris. El pitch queda ilustrativo.
+- **Cuándo se cambian.** Los del CT desde que termina el CT; los del PET desde que termina el examen. Antes, el control avisa que primero se adquiere con los valores del protocolo. La reproducción de la adquisición siempre usa los valores reales.
+- **Modelo del PET**: fracción de cuentas = (tiempo ÷ tiempo adquirido) × (actividad ÷ actividad inyectada) × decaimiento por la captación adicional. El ruido agregado es sigma × raíz(1/f − 1), con sigma = A × valor^p propio de cada serie. Menos iteraciones se imitan con suavizado y pérdida de contraste, y más filtro con un suavizado gaussiano de la diferencia en cuadratura. Es el esquema de la consola TC.
+- **El ruido de partida se mide en la imagen cargada**, porque con otros estudios no hay constantes calibradas. En el PET se mide en la diferencia entre cortes vecinos, que cancela la anatomía; en el caso de prueba da 10 % a nivel de tejido. Un primer intento con la desviación dentro de cada corte daba 22 %, contaminado por la anatomía, y se descartó. En el CT se mide en bloques uniformes de tejido blando: 9,7 HU sobre la imagen reducida. Si la imagen no permite medirlo se usa un valor típico y la tarjeta lo dice.
+- **Modelo del CT**: el ruido agregado es sigma × raíz(R − 1), con R la razón entre la dosis adquirida y la simulada en ese corte. Apagar la modulación deja la corriente fija en el máximo: la dosis sube y la imagen no mejora. El kV cambia dosis y contraste con la tabla aproximada de la consola TC, más una fila extrapolada para 70 kV. CTDIvol y DLP se recalculan.
+- **Efecto del CT sobre el PET corregido**: se calcula el ruido que llega al mapa de atenuación después de suavizarlo a la resolución del PET y se propaga a lo largo de 30 cm de paciente. Da décimas de punto porcentual (± 0,18 % con un cuarto del mAs), así que casi no se ve. Se muestra el número en la pestaña Recon y se explica en «Qué es real y qué no». Descartado: exagerar el efecto para que se note.
+- **El ruido es estable**: usa una semilla por corte, así que no cambia al redibujar ni al mover el corte y volver.
+- **Ventana derecha, botón Original**: la misma vista de la ventana central tal como se adquirió.
+- **Pisos**: 0,5 min por cama, 1 mCi y 20 mAs. La lista, el pie de cada tarjeta y el diálogo dicen que son pisos del simulador.
+- **Restaurar lo adquirido** devuelve todo al original; New también.
+
+**Validación.** 60, 58 y 37 comprobaciones correctas según la forma de carga. Con MSB-00556: ninguna opción mejora lo adquirido; a 1 min por cama quedan 50 % de las cuentas y a 0,5 min el ruido agregado crece × 1,70 (teórico 1,73); la actividad total del corte cambia menos de 0,5 %; con Ref. mAs 31 el ruido agregado al CT es 16,9 HU (teórico 16,9) y el DLP baja de 248 a 62 mGy·cm; sin modulación el DLP sube a 319 y la imagen queda idéntica; la serie sin corregir no cambia cuando se degrada el CT.
+
+**Pendiente.**
+- El factor 1,5 con que se corrige el ruido medido del PET es una estimación; no está contrastado con un maniquí.
+- La simulación es plano a plano: no correlaciona el ruido entre cortes ni degrada la resolución en el eje Z.
+- Probar con estudios de otros equipos.
