@@ -68,7 +68,7 @@
     let ds;
     try { ds = dicomParser.parseDicom(new Uint8Array(buf)); } catch (e) { return null; }
     const s = t => { const v = ds.string(t); return v === undefined ? '' : v.trim(); };
-    const BINARIOS = ['x00189311', 'x00189345', 'x00189309'];
+    const BINARIOS = ['x00189311', 'x00189345', 'x00189309', 'x00189324', 'x00189306', 'x00189307', 'x00189310'];
     const f = t => {
       const e = ds.elements[t]; if (!e) return NaN;
       if (e.vr === 'FD' || (!e.vr && BINARIOS.includes(t))) return ds.double(t);
@@ -91,7 +91,7 @@
       slope: Number.isNaN(f('x00281053')) ? 1 : f('x00281053'),
       inter: Number.isNaN(f('x00281052')) ? 0 : f('x00281052'),
       tAdq: tmASeg(s('x00080032')), tRef: f('x00541300'),
-      ma: f('x00181151'), mas: f('x00181152'), ctdi: f('x00189345'),
+      ma: f('x00181151'), mas: f('x00181152'), ctdi: f('x00189345'), tExp: f('x00181150'), paso: f('x00189311'),
       tope: lista('x00281050').length && lista('x00281051').length ? lista('x00281050')[0] + lista('x00281051')[0] / 2 : NaN,
     };
     if (im.comprimida) return im;
@@ -135,7 +135,8 @@
       duracion: f('x00181242'), tipoSerie: s('x00541000'), aceptacion: f('x00541200'), mash: s('x00541201'),
       // CT
       kv: f('x00180060'), ma: f('x00181151'), mas: f('x00181152'), tExp: f('x00181150'),
-      paso: f('x00189311'), ctdi: f('x00189345'), velMesa: f('x00189309'), fov: f('x00181100'), fovDatos: f('x00180090'),
+      paso: f('x00189311'), ctdi: f('x00189345'), velMesa: f('x00189309'),
+      modTipo: s('x00189323'), ahorro: f('x00189324'), colUna: f('x00189306'), colTotal: f('x00189307'), avance: f('x00189310'), fov: f('x00181100'), fovDatos: f('x00180090'),
       filtro: s('x00181160'),
     };
     const sec = ds.elements.x00540016;
@@ -168,6 +169,9 @@
       dx: p.ps[1] * k, dy: p.ps[0] * k,
       x0: p.ipp[0] + (k - 1) * p.ps[1] / 2, y0: p.ipp[1] + (k - 1) * p.ps[0] / 2,
       zs: limpio.map(im => im.z), dz: n > 1 ? Math.abs(limpio[0].z - limpio[n - 1].z) / (n - 1) : (p.cab.grosor || 1),
+      maZ: limpio.map(im => im.ma), ctdiZ: limpio.map(im => im.ctdi),
+      // mAs efectivo por corte: el de la cabecera o, si falta, corriente x tiempo de rotacion / pitch.
+      masZ: limpio.map(im => !Number.isNaN(im.mas) ? im.mas : (im.ma * im.tExp / 1000 / (im.paso > 0 ? im.paso : 1))),
       tiempos: limpio.map(im => im.tAdq), colsOrig: p.cols, rowsOrig: p.rows, psOrig: p.ps[1],
     };
   }
@@ -356,7 +360,7 @@
       // El CT dura segundos: salvo en tiempo real, se reproduce en al menos 4 s para que se alcance a ver.
       E.relojCt += dt * (E.vel === 1 ? 1 : Math.min(E.vel, Math.max(1, E.ctDur / 4)));
       if (E.relojCt >= E.ctDur) { finCt(); return; }
-      pintar(); pintarCronica();
+      pintar(); pintarCronica(); pintarGrafico();
       decir('Adquiriendo el CT: ' + num(E.relojCt, 1) + ' de ' + num(E.ctDur, 1) + ' s…');
     } else if (E.fase === 'adquiriendo') {
       E.reloj += dt * E.vel;
@@ -486,13 +490,31 @@
       g.strokeStyle = '#4fe3ff'; g.lineWidth = 2.5 * d; g.beginPath(); g.moveTo(caja.x, y); g.lineTo(caja.x + caja.w, y); g.stroke();
       g.fillStyle = 'rgba(79,227,255,.13)'; if (E.ctSentido === 'Caudocranial') g.fillRect(caja.x, y, caja.w, yb0 - y); else g.fillRect(caja.x, ya0, caja.w, y - ya0);
     }
+    if (E.ct) {
+      // Corriente del tubo por corte, al costado derecho: tenue lo planificado, firme lo ya adquirido.
+      const D = resumen(E.ct.maZ);
+      if (D && D.max > D.min) {
+        const xa = caja.x + caja.w + 5 * d, an = Math.max(8 * d, Math.min(40 * d, w - xa - 6 * d));
+        [false, true].forEach(hecho => {
+          g.strokeStyle = hecho ? '#ffa726' : 'rgba(255,167,38,.4)'; g.lineWidth = (hecho ? 1.8 : 1) * d; g.beginPath(); let abierto = false;
+          for (let i = E.r0; i <= E.r1; i++) {
+            const j = E.ct.dePet[i], m = j >= 0 ? E.ct.maZ[j] : NaN;
+            if (Number.isNaN(m) || (hecho && !ctVisible(i))) { abierto = false; continue; }
+            const x = xa + an * m / D.max, y = yDe(p.zs[i]);
+            if (!abierto) { g.moveTo(x, y); abierto = true; } else g.lineTo(x, y);
+          }
+          g.stroke();
+        });
+        texto(g, d, ['mA'], xa, ya0 - 15 * d, '#ffa726');
+      }
+    }
     if (!plan && E.fase !== 'ct') {
       const yc = yDe(p.zs[E.corte]);
       g.strokeStyle = '#ffd24a'; g.lineWidth = d; g.setLineDash([5 * d, 4 * d]); g.beginPath(); g.moveTo(caja.x, yc); g.lineTo(caja.x + caja.w, yc); g.stroke(); g.setLineDash([]);
     }
     const c = (E.ct || p).cab;
     texto(g, d, ['R'], 8 * d, h / 2 - 6 * d, '#fff');
-    texto(g, d, E.ct ? ['kV ' + num(c.kv, 0), 'SL ' + num(c.grosor, 1)] : ['Proyección del PET'], 8 * d, h - (E.ct ? 46 : 32) * d, '#fff');
+    texto(g, d, E.ct ? ['kV ' + num(c.kv, 0), 'SL ' + num(c.grosor, 1), dosisCt().activa ? 'AEC On' : 'AEC Off'] : ['Proyección del PET'], 8 * d, h - (E.ct ? 60 : 32) * d, '#fff');
     texto(g, d, [fechaDe(c.fechaSerie || c.fechaEstudio), horaDe(c.horaSerie), p.cab.posicion || ''], 8 * d, 8 * d, '#fff');
     texto(g, d, ['LEN ' + num(E.largo, 0) + ' mm', 'SP1 ' + num(p.zs[E.r0], 1), 'SP2 ' + num(p.zs[E.r1], 1), E.continuo ? '' : E.sel.length + ' de ' + E.espacial.length + ' camas'], w - 8 * d, h - 62 * d, plan ? '#ff9ae6' : '#fff', 'right');
     $('rotTopo').textContent = E.ct ? 'Topograma (proyección del CT)' : 'Topograma (proyección del PET)';
@@ -734,22 +756,59 @@
     return tarjetaAuto(c);
   }
 
+  // Modulacion de dosis del CT. Sirve para cualquier fabricante: usa la cabecera si trae el tipo
+  // de modulacion y, si no, la deduce de cuanto cambia la corriente entre cortes.
+  const NOMBRE_MODULACION = [[/siemens/i, 'CARE Dose4D'], [/ge med|general electric/i, 'AutomA / SmartmA'], [/philips/i, 'DoseRight'], [/canon|toshiba/i, 'SUREExposure'], [/united imaging/i, 'uDose']];
+  const resumen = l => { const v = l.filter(x => !Number.isNaN(x) && x > 0); return v.length ? { med: v.reduce((a, b) => a + b, 0) / v.length, min: Math.min(...v), max: Math.max(...v), n: v.length } : null; };
+  function dosisCt() {
+    const v = E.ct, c = v.cab, idx = [];
+    for (let i = E.r0; i <= E.r1; i++) { const j = v.dePet[i]; if (j >= 0 && !idx.includes(j)) idx.push(j); }
+    const de = a => idx.map(j => a[j]);
+    const D = { ma: resumen(de(v.maZ)), mas: resumen(de(v.masZ)), ctdi: resumen(de(v.ctdiZ)), maTodo: resumen(v.maZ), masTodo: resumen(v.masZ) };
+    const tipo = (c.modTipo || '').toUpperCase().trim();
+    const varia = !!D.maTodo && D.maTodo.n > 2 && (D.maTodo.max - D.maTodo.min) > 0.1 * D.maTodo.med;
+    D.activa = tipo ? tipo !== 'NONE' : varia;
+    D.tipo = tipo || (varia ? 'No informado' : 'NONE');
+    D.origen = tipo ? 'cabecera' : (varia ? 'deducido: la corriente cambia entre cortes' : 'deducido: corriente constante');
+    const marca = NOMBRE_MODULACION.find(m => m[0].test(c.fabricante || ''));
+    D.nombre = marca ? marca[1] : '';
+    D.ahorro = (c.ahorro > 0 && c.ahorro < 100) ? c.ahorro : NaN;
+    // mAs de referencia: no viene en el DICOM. Se estima como el mAs que habria sin modulacion.
+    if (!D.masTodo) { D.ref = NaN; D.refComo = 'sin datos de mAs'; }
+    else if (!D.activa) { D.ref = D.masTodo.med; D.refComo = 'sin modulación: es el mAs usado'; }
+    else if (!Number.isNaN(D.ahorro)) { D.ref = D.masTodo.med / (1 - D.ahorro / 100); D.refComo = 'estimado: mAs medio ÷ (1 − ahorro)'; }
+    else { D.ref = D.masTodo.max; D.refComo = 'estimado: mAs máximo de los cortes'; }
+    D.dlp = D.ctdi ? D.ctdi.med * E.largo / 10 : NaN;
+    return D;
+  }
+  const entre = (r, d) => r ? num(r.min, d) + ' a ' + num(r.max, d) : '';
+
   function tarjetaCt(pest) {
-    const v = E.ct, c = v.cab;
+    const v = E.ct, c = v.cab, D = dosisCt();
     const ventanas = c.ventanaC.map((x, i) => 'C ' + x + ' / W ' + c.ventanaA[i]).join('   ');
     if (pest === 'routine') return '<div class="rejilla">' +
-      bloque('', campo('Eff. mAs', num(v.masMedio, 0), { giro: true, un: 'medio de los cortes' }) + campo('kV', num(c.kv, 0), { ops: [80, 100, 110, 120, 130, 140] }) +
-        campo('Tube current', num(v.maMedio, 0), { un: 'mA, medio' }) + campo('CTDIvol', num(v.ctdiMedio, 2), { un: 'mGy, medio' }) +
-        campo('Patient position', c.posicion, { ops: ['HFS', 'FFS', 'HFP', 'FFP'] })) +
-      bloque('', campo('Slice', num(c.grosor, 1), { ops: ['1.0', '1.5', '2.0', '3.0', '4.0', '5.0'], un: 'mm' }) +
+      bloque('Dosis', campo('Dose modulation', D.activa ? 'On' : 'Off', { ops: ['On', 'Off'], un: D.nombre ? 'en este fabricante: ' + D.nombre : '' }) +
+        campo('Modulation type', D.tipo, { un: D.origen }) +
+        campo('Ref. mAs', D.ref ? num(D.ref, 0) : '—', { giro: true, un: D.refComo }) +
+        campo('Eff. mAs', D.mas ? num(D.mas.med, 0) : '—', { un: D.mas ? 'medio del rango; de ' + entre(D.mas, 0) : '' }) +
+        campo('Tube current', D.ma ? num(D.ma.med, 0) : '—', { un: D.ma ? 'mA medio; de ' + entre(D.ma, 0) : 'mA' }) +
+        campo('kV', num(c.kv, 0), { ops: [80, 100, 110, 120, 130, 140] }) +
+        campo('CTDIvol', D.ctdi ? num(D.ctdi.med, 2) : '—', { un: D.ctdi ? 'mGy medio; de ' + entre(D.ctdi, 2) : 'mGy' }) +
+        campo('DLP', num(D.dlp, 0), { un: 'mGy·cm, estimado: CTDIvol medio × largo' }) +
+        campo('Dose saving', num(D.ahorro, 1), { un: '% (cabecera)' })) +
+      bloque('', campo('Patient position', c.posicion, { ops: ['HFS', 'FFS', 'HFP', 'FFP'] }) +
+        campo('Slice', num(c.grosor, 1), { ops: ['1.0', '1.5', '2.0', '3.0', '4.0', '5.0'], un: 'mm' }) +
         campo('Pitch', num(c.paso, 2), { giro: true }) + campo('No. of images', E.r1 - E.r0 + 1, { accion: 'rango', giro: true }) +
         campo('Range: Begin', num(E.pets[0].zs[E.r0], 1), { un: 'mm', accion: 'rango', giro: true }) + campo('End', num(E.pets[0].zs[E.r1], 1), { un: 'mm', accion: 'rango', giro: true }) +
         campo('Length', num(E.largo, 0), { un: 'mm' }) + campo('Scan time', num(E.ctDur, 1), { un: E.ctDurReal ? 's' : 's (sin dato de velocidad de mesa)' })) + '</div>';
     if (pest === 'scan') return '<div class="rejilla">' +
-      bloque('', campo('Exposure time', num(c.tExp, 0), { un: 'ms' }) + campo('Tube current', num(v.maMedio, 0), { un: 'mA, medio' }) +
+      bloque('', campo('Rotation time', num(c.tExp / 1000, 2), { un: 's' }) +
+        campo('Collimation', (c.colTotal > 0 && c.colUna > 0) ? Math.round(c.colTotal / c.colUna) + ' × ' + num(c.colUna, 1) : '—', { un: 'mm' }) +
+        campo('Feed / rotation', num(c.avance, 1), { un: 'mm' }) +
         campo('Filter type', c.filtro) + campo('Scanner', [c.fabricante, c.modelo].filter(Boolean).join(' '), { larga: true })) +
       bloque('', campo('Scan start', 'Start button', { ops: ['Start button', 'Delay'] }) + campo('Direction', E.ctSentido, { ops: ['Craniocaudal', 'Caudocranial'] }) +
-        campo('Table speed', num(c.velMesa, 1), { un: 'mm/s' })) + '</div>';
+        campo('Table speed', num(c.velMesa, 1), { un: 'mm/s' })) +
+      bloque('Corriente del tubo a lo largo del rango', '<canvas id="grafico" data-tipo="ma"></canvas><div class="leyenda"><span style="--c:#e08a00">mA por corte (cabecera)</span><span style="--c:#999">Ref. mAs estimado, en mA</span></div>') + '</div>';
     if (pest === 'recon') return '<div class="rejilla">' +
       bloque('', campo('Series description', v.desc, { larga: true }) + campo('Slice', num(c.grosor, 1), { ops: ['1.0', '1.5', '2.0', '3.0', '4.0', '5.0'], un: 'mm' }) +
         campo('Kernel', c.nucleo, { ops: ['B20s', 'B31s', 'B41s', 'B60s', 'B70s'] }) + campo('Window', ventanas || '—', { larga: true })) +
@@ -781,6 +840,7 @@
 
   function pintarGrafico() {
     const cv = $('grafico'); if (!cv || E.fase === 'vacio') return;
+    if (cv.dataset.tipo === 'ma') { pintarCurvaMa(cv); return; }
     const r = cv.getBoundingClientRect(); cv.width = Math.max(100, r.width); cv.height = Math.max(60, r.height);
     const g = cv.getContext('2d'), W = cv.width, H = cv.height, mi = 34, ms = 8, mb = 20;
     g.fillStyle = '#fff'; g.fillRect(0, 0, W, H);
@@ -801,6 +861,32 @@
     });
     g.stroke();
     if (enPet) { g.strokeStyle = '#d33'; g.lineWidth = 1; g.beginPath(); g.moveTo(xDe(hasta), ms); g.lineTo(xDe(hasta), H - mb); g.stroke(); }
+  }
+
+  function pintarCurvaMa(cv) {
+    const r = cv.getBoundingClientRect(); cv.width = Math.max(100, r.width); cv.height = Math.max(60, r.height);
+    const g = cv.getContext('2d'), W = cv.width, H = cv.height, mi = 34, ms = 8, mb = 20, v = E.ct, D = dosisCt();
+    g.fillStyle = '#fff'; g.fillRect(0, 0, W, H);
+    g.strokeStyle = '#999'; g.lineWidth = 1; g.strokeRect(mi, ms, W - mi - 8, H - ms - mb);
+    if (!D.maTodo) { g.fillStyle = '#555'; g.font = '11px Arial'; g.fillText('La cabecera no trae la corriente por corte', mi + 8, H / 2); return; }
+    // El Ref. mAs se pasa a mA con la misma razon mAs/mA de los cortes, para dibujarlo en el mismo eje.
+    const razon = D.masTodo ? D.masTodo.med / D.maTodo.med : NaN, refMa = (D.ref && razon) ? D.ref / razon : NaN;
+    const tope = Math.max(D.maTodo.max, refMa || 0) * 1.1, n = E.r1 - E.r0 + 1;
+    const xDe = q => mi + (W - mi - 8) * (q + 0.5) / n, yDe = m => ms + (H - ms - mb) * (1 - m / tope);
+    g.fillStyle = '#555'; g.font = '10px Arial'; g.textAlign = 'right'; g.textBaseline = 'middle';
+    [0, 0.5, 1].forEach(f => g.fillText(Math.round(tope * f / 1.1), mi - 4, yDe(tope * f / 1.1)));
+    g.textAlign = 'center'; g.textBaseline = 'top';
+    g.fillText('craneal', xDe(0) + 14, H - mb + 4); g.fillText('caudal', xDe(n - 1) - 12, H - mb + 4);
+    if (refMa) { g.strokeStyle = '#999'; g.setLineDash([5, 4]); g.beginPath(); g.moveTo(mi, yDe(refMa)); g.lineTo(W - 8, yDe(refMa)); g.stroke(); g.setLineDash([]); }
+    [false, true].forEach(hecho => {
+      g.strokeStyle = hecho ? '#e08a00' : 'rgba(224,138,0,.35)'; g.lineWidth = hecho ? 2 : 1; g.beginPath(); let abierto = false;
+      for (let q = 0; q < n; q++) {
+        const i = E.r0 + q, j = v.dePet[i], m = j >= 0 ? v.maZ[j] : NaN;
+        if (Number.isNaN(m) || (hecho && !ctVisible(i))) { abierto = false; continue; }
+        if (!abierto) { g.moveTo(xDe(q), yDe(m)); abierto = true; } else g.lineTo(xDe(q), yDe(m));
+      }
+      g.stroke();
+    });
   }
 
   function refrescarTodo() { pintarFranja(); pintarCronica(); pintarTarjeta(); pintar(); }
@@ -968,5 +1054,5 @@
 
   window.addEventListener('error', ev => { (window.__errores = window.__errores || []).push(String(ev.message)); });
   enlazar(); refrescarTodo();
-  window.ConsolaPet = { estado: E, cargar, iniciar, pausar, saltar, terminar, planificar, fijarRango, revelado, ctVisible, camaActual };
+  window.ConsolaPet = { estado: E, dosisCt, cargar, iniciar, pausar, saltar, terminar, planificar, fijarRango, revelado, ctVisible, camaActual };
 })();

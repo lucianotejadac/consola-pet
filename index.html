@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Consola PET · simulador docente</title>
-<link rel="stylesheet" href="consola.css?v=2">
+<link rel="stylesheet" href="consola.css?v=3">
 </head>
 <body>
 <div id="consola">
@@ -112,9 +112,9 @@
   <div class="caja ancha">
     <h2>Qué es real y qué no</h2>
     <h3>Sale de la cabecera DICOM del estudio que cargaste</h3>
-    <p>Radiofármaco, actividad, hora de inyección, método de reconstrucción, iteraciones, subconjuntos, filtro, matriz, tamaño de píxel, correcciones aplicadas, y los parámetros del CT (kV, mAs, paso, núcleo, CTDIvol).</p>
+    <p>Radiofármaco, actividad, hora de inyección, método de reconstrucción, iteraciones, subconjuntos, filtro, matriz, tamaño de píxel, correcciones aplicadas, y los parámetros del CT: kV, paso, núcleo, colimación, tipo de modulación de dosis, ahorro de dosis, y la corriente, el mAs y el CTDIvol de cada corte.</p>
     <h3>Se deduce de los datos</h3>
-    <p>El rango que defines sobre el topograma solo puede abarcar camas completas de las que tiene el estudio, porque las imágenes ya existen: acortar el rango deja fuera camas, no las vuelve a adquirir. El número de camas, su posición y el orden en que se adquirieron se calculan a partir de la hora de adquisición de cada corte. El topograma es una proyección del CT, porque el estudio no trae la serie del topograma. La curva de la pestaña Scan es una tasa relativa estimada desde la imagen, no la tasa de cuentas que midió el equipo.</p>
+    <p>El rango que defines sobre el topograma solo puede abarcar camas completas de las que tiene el estudio, porque las imágenes ya existen: acortar el rango deja fuera camas, no las vuelve a adquirir. El número de camas, su posición y el orden en que se adquirieron se calculan a partir de la hora de adquisición de cada corte. El topograma es una proyección del CT, porque el estudio no trae la serie del topograma. En el CT, el DLP es el CTDIvol medio del rango por su largo, y el «Ref. mAs» es una estimación: la cabecera no guarda el valor que se eligió en la consola, así que se calcula como el mAs medio dividido por uno menos el ahorro de dosis; si la cabecera tampoco trae el ahorro, se usa el mAs máximo de los cortes. Si no viene el tipo de modulación, se deduce de cuánto cambia la corriente entre cortes. La curva de la pestaña Scan del PET es una tasa relativa estimada desde la imagen, no la tasa de cuentas que midió el equipo.</p>
     <h3>Es ilustrativo</h3>
     <p>Las alternativas que aparecen al abrir cada lista. El valor marcado es el que se usó; los demás muestran qué se podría haber elegido en una consola, pero no cambian la imagen: el estudio ya está reconstruido y los datos crudos no vienen en el DICOM.</p>
     <p>La reproducción no vuelve a adquirir ni a reconstruir nada: muestra los cortes ya reconstruidos en el orden y con los tiempos en que se adquirieron. El CT dura lo que resulta de su largo y la velocidad de mesa de la cabecera, y se muestra en al menos 4 segundos para que se alcance a ver.</p>
@@ -124,6 +124,6 @@
 </div>
 
 <script src="vendor/dicomParser.min.js"></script>
-<script src="consola.js?v=2"></script>
+<script src="consola.js?v=3"></script>
 </body>
 </html>

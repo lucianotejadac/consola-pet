@@ -50,3 +50,22 @@ Participantes: Luciano Tejada (docente) y Claude (Claude Code).
 **Pendiente.**
 - La hora de inyección y el tiempo de captación son los del estudio original: no se recalculan si el rango parte en otra cama.
 - Probar el arrastre en pantalla táctil.
+
+## 2026-09-28 · Tercera ronda: modulación de dosis del CT
+
+Participantes: Luciano Tejada (docente) y Claude (Claude Code).
+
+**Contexto.** El docente preguntó si el estudio traía información de la modulación de dosis. La cabecera del CT trae el tipo de modulación, el ahorro de dosis estimado y la corriente, el mAs y el CTDIvol de cada corte, pero no el mAs de referencia ni el nivel de intensidad elegidos en la consola, que iban en etiquetas privadas eliminadas al anonimizar. Pidió estimar lo que falta y agregarlo, recordando que se cargarán otros estudios PET.
+
+**Decisiones.**
+- **Bloque «Dosis» en la pestaña Routine del CT**: modulación On u Off, tipo, Ref. mAs, mAs efectivo, corriente, kV, CTDIvol, DLP y ahorro de dosis. Los valores medios y los rangos se calculan sobre el rango elegido y cambian al moverlo.
+- **Ref. mAs estimado**, porque no viene en el DICOM: mAs medio de la serie dividido por uno menos el ahorro de dosis de la cabecera, que equivale al mAs que se habría usado sin modulación (125 en el caso de prueba). Si no viene el ahorro, el mAs máximo de los cortes. Si no hay modulación, el mAs usado. El campo dice al lado cómo se obtuvo.
+- **DLP estimado** como CTDIvol medio del rango por su largo; la cabecera no lo trae.
+- **Sirve para otros fabricantes.** Si la cabecera trae el tipo de modulación se usa; si no, la modulación se deduce cuando la corriente cambia más de un 10 % de la media entre cortes. Si falta el mAs por corte se calcula con corriente, tiempo de rotación y pitch. Si no hay datos de corriente, los campos quedan en raya.
+- **Nombre genérico en el control** («Dose modulation») y, al lado, el nombre comercial que le da el fabricante del estudio cargado, solo como referencia para el estudiante.
+- **Curva de mA** al costado del topograma y en la pestaña Scan del CT: tenue lo planificado y firme lo ya adquirido, con el Ref. mAs como línea de referencia.
+- Descartado: mostrar un nivel de intensidad de la modulación, porque no hay forma de estimarlo desde la imagen.
+
+**Validación.** Con MSB-00556: modulación On, tipo XYZ_EC, ahorro 48,6 %, Ref. mAs 125; en un rango de 500 mm, mAs efectivo 70 (54 a 90), 176 mA, CTDIvol 4,95 mGy y DLP 248 mGy·cm; en el rango completo, DLP 359 mGy·cm. Casos simulados sobre el mismo estudio: sin etiquetas de modulación ni de ahorro (se deduce On, Ref. mAs 90), con corriente constante (Off) y sin datos de corriente (campos en raya, sin errores). 40, 38 y 24 comprobaciones correctas según la forma de carga.
+
+**Pendiente.** Las pruebas de otros fabricantes son simuladas: falta cargar un CT real de otro equipo.
