@@ -1171,8 +1171,17 @@
     if (E.fase !== 'terminado') { decir('Volumina se abre cuando termina el examen: primero adquiere el CT y el PET.', true); return; }
     $('capaVolumina').hidden = false;
     const m = $('marcoVolumina');
-    if (!m.getAttribute('src')) m.setAttribute('src', 'volumina/index.html?v=1'); else enviarAVolumina();
+    if (!m.getAttribute('src')) m.setAttribute('src', 'volumina/index.html?v=3'); else enviarAVolumina();
     decir('Estudio enviado a Volumina: ' + (E.ct ? 'CT y ' : '') + E.pets.length + ' serie(s) PET, ' + (E.r1 - E.r0 + 1) + ' cortes.');
+  }
+  // El tutorial usa esto para llevar la consola a la pantalla de la que habla cada paso.
+  function ir(o) {
+    if (E.fase === 'vacio') return;
+    if (o.paso && (o.paso === 'pet' || E.ct)) E.paso = o.paso;
+    if (o.pestana) E.pestana = o.pestana;
+    if (o.modo === 'ct' ? (E.ct && E.fase !== 'rango') : (o.modo && FASES_PET.includes(E.fase) && (o.modo === 'pet' || E.ct))) E.modo = o.modo;
+    if (o.derecha && (o.derecha === 'orig' || (o.derecha === 'mipac' ? E.ac : E.nac))) E.derecha = o.derecha;
+    refrescarTodo();
   }
   function cerrarVolumina() { $('capaVolumina').hidden = true; decir('De vuelta en la consola. El estudio sigue cargado.'); pintar(); }
 
@@ -1351,5 +1360,5 @@
 
   window.addEventListener('error', ev => { (window.__errores = window.__errores || []).push(String(ev.message)); });
   enlazar(); refrescarTodo();
-  window.ConsolaPet = { estado: E, abrirVolumina, cerrarVolumina, voluminaLista, estudioParaVolumina, dosisCt, opciones, aplicarSim, restaurar, fraccionCuentas, epsCt, ctCorteSim, ctFactores, cargar, iniciar, pausar, saltar, terminar, planificar, fijarRango, revelado, ctVisible, camaActual };
+  window.ConsolaPet = { estado: E, ir, abrirVolumina, cerrarVolumina, voluminaLista, estudioParaVolumina, dosisCt, opciones, aplicarSim, restaurar, fraccionCuentas, epsCt, ctCorteSim, ctFactores, cargar, iniciar, pausar, saltar, terminar, planificar, fijarRango, revelado, ctVisible, camaActual };
 })();

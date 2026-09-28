@@ -32,7 +32,7 @@ function setVolume(v){
  volume=v;position=[Math.floor(v.nx/2),Math.floor(v.ny/2),Math.floor(v.nz/2)];
  resetMprZoom();
  baseMaximum=0;if(VolumeCore.isFunctional(v))for(const value of v.data)baseMaximum=Math.max(baseMaximum,value);
- $('width').value=Math.min(4000,Math.max(1,v.window));$('level').value=v.level;
+ $('width').value=Math.min(Number($('width').max)||4000,Math.max(1,v.window));$('level').value=v.level;
  $('metadata').textContent=`${v.description} · ${v.modality}`;
  $('dimensions').textContent=`${v.nx} × ${v.ny} × ${v.nz} · ${v.spacing.map(s=>s.toFixed(2)).join(' × ')} mm`;
  names.forEach((name,i)=>{$(name+'Slice').max=[v.nz,v.ny,v.nx][i]-1;});

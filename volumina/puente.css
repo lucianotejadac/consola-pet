@@ -1,3 +1,5 @@
 /* Ajustes de Volumina dentro de la consola PET. */
 #volver{width:100%;font-size:13px}
 #preset:disabled{opacity:.45}
+/* El control del que habla el tutorial de la consola. */
+.guia-objetivo{outline:2px solid #e8590c!important;outline-offset:3px;border-radius:3px;box-shadow:0 0 0 6px rgba(232,89,12,.16)}

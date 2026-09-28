@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Consola PET · simulador docente</title>
-<link rel="stylesheet" href="consola.css?v=5">
+<link rel="stylesheet" href="consola.css?v=6">
+<link rel="stylesheet" href="tutorial.css?v=1">
 </head>
 <body>
 <div id="consola">
@@ -13,6 +14,7 @@
     <span class="marca">Consola PET</span>
     <span class="sub">simulador docente de adquisición PET/CT</span>
     <span class="hueco"></span>
+    <button id="btnTutorial" aria-pressed="false" title="Tutorial guiado con preguntas, de la planificación a Volumina">Tutorial</button>
     <label class="mini"><input type="checkbox" id="ocultarId" checked> Ocultar identidad</label>
     <button id="btnAcerca" class="plano">Qué es real y qué no</button>
   </header>
@@ -97,6 +99,32 @@
 <div id="lista" hidden></div>
 <div id="capaVolumina" hidden><iframe id="marcoVolumina" title="Volumina"></iframe></div>
 
+<div id="guiaMarcas" aria-hidden="true"></div>
+<div class="guia" id="guia" hidden role="dialog" aria-label="Tutorial guiado">
+  <div class="guia-cab" id="guiaCab">
+    <span class="agarre" aria-hidden="true">⋮⋮</span>
+    <span class="quien" id="guiaQuien">—</span>
+    <span class="cuenta" id="guiaCuenta">1 / 1</span>
+    <button class="guia-x" id="guiaCerrar" aria-label="Cerrar el tutorial">✕</button>
+  </div>
+  <div class="guia-cuerpo">
+    <h3 id="guiaTitulo">—</h3>
+    <p class="guia-pregunta" id="guiaPregunta"></p>
+    <div class="guia-mueve"><span aria-hidden="true">▸</span><span id="guiaMueve"></span></div>
+    <p class="guia-estado" id="guiaEstado" hidden></p>
+    <textarea id="guiaNota" placeholder="Anoten aquí la respuesta…"></textarea>
+  </div>
+  <div class="guia-pie">
+    <button class="guia-nav" id="guiaAntes" aria-label="Paso anterior">←</button>
+    <button class="guia-nav" id="guiaDespues" aria-label="Paso siguiente">→</button>
+    <span class="guia-puntos" id="guiaPuntos"></span>
+    <button class="guia-chico" id="guiaRecolocar" title="Volver a la pantalla del paso y recolocar el panel">Recolocar</button>
+    <button class="guia-chico" id="guiaBorrar" title="Borrar todas las respuestas">Borrar</button>
+    <button class="guia-fin" id="guiaFin">Finalizar y generar PDF</button>
+  </div>
+</div>
+<div id="informe"></div>
+
 <div id="menuCarga" class="dialogo" hidden>
   <div class="caja">
     <h2>Cargar el estudio</h2>
@@ -124,6 +152,8 @@
     <p>Los valores mínimos de cada lista (por ejemplo 0,5 min por cama, 1 mCi o 20 mAs) son pisos del simulador y pueden no corresponder a los límites de un equipo real.</p>
     <p>El ruido del CT pasa al PET corregido muy atenuado, porque el mapa de atenuación se suaviza a la resolución del PET; por eso ese efecto es de décimas de punto porcentual y casi no se ve.</p>
     <p>El botón «Original» de la ventana derecha muestra la misma vista tal como se adquirió, para comparar.</p>
+    <h3>Tutorial</h3>
+    <p>El botón «Tutorial» abre un panel con diecinueve pasos y una pregunta en cada uno, desde la planificación hasta la generación de cortes en Volumina. Las respuestas se guardan en este navegador y «Finalizar y generar PDF» arma un informe con las preguntas, las respuestas y el estado de la consola. El tutorial no corrige las respuestas: solo indica si el paso se hizo en la consola.</p>
     <h3>Volumina</h3>
     <p>«Pasar a Volumina» abre el visor con el CT y el PET del rango que adquiriste, sin volver a cargar archivos: cortes en los tres planos, fusión, MIP y VRT, y generación de cortes. Recibe las imágenes como están en la consola, así que si cambiaste parámetros llegan simuladas y el visor lo avisa. El CT llega reducido a 256 de lado.</p>
     <h3>Es ilustrativo</h3>
@@ -135,6 +165,7 @@
 </div>
 
 <script src="vendor/dicomParser.min.js"></script>
-<script src="consola.js?v=5"></script>
+<script src="consola.js?v=7"></script>
+<script src="tutorial.js?v=1"></script>
 </body>
 </html>

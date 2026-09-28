@@ -14,6 +14,7 @@ Simulador docente que presenta un PET/CT ya reconstruido como si se acabara de a
 8. Las listas en gris son ilustrativas: se abren y dejan ver otras opciones, pero no cambian nada.
 9. **Pasar a Volumina** abre el visor con el CT y el PET adquiridos, sin volver a cargar archivos: cortes en los tres planos, fusión, MIP y VRT, y generación de cortes.
 10. **New** vuelve al topograma para planificar otro rango.
+11. **Tutorial** abre un panel flotante con 19 pasos en cinco etapas (planificación, CT, PET, calidad de imagen, Volumina y cortes), con una pregunta en cada uno. Una línea de puntos señala lo que hay que mover y un recuadro, dónde aparece el resultado. Las respuestas se guardan en el navegador y «Finalizar y generar PDF» arma el informe.
 
 La simulación usa modelos sencillos sobre la imagen ya reconstruida y sirve para ver la dirección y el orden de magnitud de cada cambio, no para predecir lo que entregaría el equipo. Los valores mínimos de las listas son pisos del simulador y pueden no corresponder a los de un equipo real.
 
@@ -28,6 +29,7 @@ El caso de prueba es público: paciente MSB-00556 de la colección CMB-LCA de Th
 ## Archivos
 
 - `index.html`, `consola.css`, `consola.js`: la página completa, sin compilación.
+- `tutorial.js`, `tutorial.css`: el tutorial guiado y su informe.
 - `vendor/dicomParser.min.js`: dicom-parser 1.8.12, licencia MIT.
 - `volumina/`: copia adaptada del visor Volumina (repositorio `visor_dicom`), sin opciones de carga y con textos y escalas para PET. `consola-puente.js` recibe el estudio desde la consola.
 - `BITACORA.md`: decisiones de cada ronda de trabajo.

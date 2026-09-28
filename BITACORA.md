@@ -114,3 +114,30 @@ Participantes: Luciano Tejada (docente) y Claude (Claude Code).
 **Validación.** 76, 73 y 47 comprobaciones correctas según la forma de carga, con WebGL2 activo. Se comprueba que no queda ningún control de carga visible; que CT y PET llegan con los cortes del rango; que un mismo vóxel vale lo mismo en la consola y en el visor (5694,9 Bq/ml y 48 HU); que la fusión queda activa y alineada; que se puede cambiar a la serie sin corregir y ver el PET solo; que los tres planos tienen imagen; y que con parámetros simulados el visor recibe esas imágenes y lo avisa.
 
 **Pendiente.** Pasar el CT a resolución completa exigiría conservar 100 MB más en memoria.
+
+## 2026-09-28 · Sexta ronda: tutorial y preguntas de todo el proceso
+
+Participantes: Luciano Tejada (docente) y Claude (Claude Code).
+
+**Contexto.** El docente pidió, basándose en la interfaz del tutorial de la consola TC, un tutorial con preguntas para todo el proceso: desde la adquisición hasta Volumina y la generación de cortes axiales, coronales y sagitales.
+
+**Decisiones.**
+- **Misma interfaz de la consola TC**: panel flotante que se arrastra, una pregunta a la vez, línea de puntos animada desde el panel hasta lo que hay que mover, recuadro «resultado» donde aparece la respuesta, cuadro de texto, puntos de avance, botón Recolocar y «Finalizar y generar PDF». El panel se ubica solo donde no tapa ni el control ni el resultado.
+- **Una sola secuencia de 19 pasos en cinco etapas**, en vez de tres grupos independientes como en la consola TC, porque aquí el proceso es lineal: planificación (3), CT (3), PET (2), calidad de imagen (5), Volumina y cortes (6).
+- **Cada paso lleva la pantalla a su lugar**: elige el paso del protocolo, la pestaña, el modo de la ventana central y la vista de la derecha; los de la etapa 5 abren Volumina y dejan puestos la ventana de trabajo y el plano de salida. Los pasos de la consola cierran Volumina.
+- **El tutorial alcanza a Volumina desde afuera.** El panel y las marcas viven en la página de la consola, por encima del marco del visor, y miden los elementos de adentro; así el mismo panel sirve para las dos partes y las respuestas quedan en un solo lugar.
+- **No adquiere por el estudiante ni corrige respuestas.** Indica qué falta para poder hacer el paso (por ejemplo, terminar el PET) y marca «Hecho en la consola» cuando el estado lo confirma: rango movido, CT adquirido, PET terminado, parámetro cambiado, cortes generados en cada plano. Esto toma lo que tenía el tutorial cardíaco y le faltaba al de la consola TC.
+- **Preguntas genéricas**, sin cifras del caso de prueba, porque se cargarán otros estudios. Si el estudio no trae CT o serie sin corregir, el paso lo dice.
+- **Cortes axiales**: en Volumina el plano de salida es perpendicular a la ventana de trabajo, así que el paso de cortes axiales usa la ventana coronal y lo explica.
+- **Informe**: estado de la consola al finalizar (estudio, rango, PET, reconstrucción, CT con su dosis, parámetros simulados vigentes y cortes generados), y luego cada paso con su pregunta, si se hizo en la consola y la respuesta. Respeta la identidad oculta. Se imprime con el diálogo del navegador, que permite guardar como PDF.
+- **Consignas en «ustedes»**, como en la consola TC.
+- **Respuestas guardadas en el navegador** (almacenamiento local), con un botón para borrarlas.
+
+**Validación.** Prueba sin interfaz que recorre los 19 pasos con el estudio MSB-00556 haciendo lo que pide cada uno: 52 comprobaciones correctas a 1500 × 1000 y a 1366 × 768. En cada paso se comprueba que todos los objetivos existen y están visibles, que hay una línea por control y un recuadro por resultado, y que el panel queda dentro de la ventana sin tapar objetivos. Se comprueba además que los pasos quedan «hechos» cuando corresponde, que las respuestas se guardan, que el informe trae los 19 pasos y el estado, y que el texto escrito no se interpreta como HTML. Las pruebas de la consola se repitieron: 76, 73 y 47 correctas.
+
+**Defecto encontrado de paso.** Con el PET solo como volumen base, Volumina recortaba el ancho de ventana a 4000, pensado para HU, y la imagen salía casi en blanco y negro. Ahora usa el tope del control.
+
+**Pendiente.**
+- El diálogo de impresión no se puede probar sin interfaz: el contenido del informe está comprobado, su aspecto impreso no.
+- Las preguntas no citan páginas de la clase, como sí hace la consola TC; falta saber contra qué material se citarían.
+- No hay pauta de respuestas.

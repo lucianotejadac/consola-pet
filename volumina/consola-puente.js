@@ -4,6 +4,7 @@ window.addEventListener('error', ev => { (window.__errores = window.__errores ||
 const ConsolaPuente = (() => {
   'use strict';
   let estudio = null;
+  const generados = {};
   const medio = v => Math.round(v * 2) / 2;
 
   // Los arreglos se copian a este documento para que el visor sea dueño de sus datos.
@@ -20,6 +21,7 @@ const ConsolaPuente = (() => {
   }
 
   function recibir(e) {
+    for (const k of Object.keys(generados)) delete generados[k];
     estudio = { ct: e.ct ? volumenDe(e.ct) : null, pets: e.pets.map(volumenDe), nota: e.nota || '' };
     const s = $('series'); s.replaceChildren();
     if (estudio.ct) s.add(new Option('CT · ' + estudio.ct.description, 'ct'));
@@ -79,9 +81,13 @@ const ConsolaPuente = (() => {
     status('Estudio recibido de la consola: ' + partes.join(' + ') + '.' + (estudio.nota ? ' ' + estudio.nota : ''));
   }
 
+  // Lo que se genero en «Generar cortes», para el informe del tutorial.
+  document.addEventListener('volumina', ev => {
+    if (ev.detail && ev.detail.kind === 'slices' && slicePlan) generados[slicePlan.plane] = { cortes: slicePlan.count, distancia: slicePlan.distance, grosor: slicePlan.thickness, contenido: sliceContentIsFusion() ? 'CT + PET fusionados' : 'solo volumen base' };
+  });
   $('volver').addEventListener('click', () => { if (window.parent && window.parent.ConsolaPet) window.parent.ConsolaPet.cerrarVolumina(); });
   document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && !expandedPane && window.parent && window.parent.ConsolaPet && !document.querySelector('.modal:not([hidden])')) window.parent.ConsolaPet.cerrarVolumina(); });
-  return { recibir, elegirBase, elegirPet, estudio: () => estudio };
+  return { recibir, elegirBase, elegirPet, estudio: () => estudio, generados: () => generados };
 })();
 window.ConsolaPuente = ConsolaPuente;
 if (window.parent && window.parent !== window && window.parent.ConsolaPet && window.parent.ConsolaPet.voluminaLista) window.parent.ConsolaPet.voluminaLista();
