@@ -15,6 +15,9 @@
 .guia-x:hover{color:#1f2430;background:#dcdee4}
 .guia-cuerpo{padding:11px 13px 6px;overflow-y:auto;flex:1 1 auto;min-height:0}
 .guia-cuerpo h3{font-size:14px;margin:0 0 5px;color:#1f2430}
+.guia-caso{font-size:11.5px;line-height:1.45;background:#eef3ff;border:1px solid #b9c8f0;border-radius:4px;padding:7px 9px;margin:0 0 9px;color:#1f2a4d}
+.guia-caso[hidden]{display:none}
+.guia-caso ul{margin:4px 0 0;padding-left:16px}
 .guia-pregunta{font-size:12.5px;line-height:1.55;color:#3c4252;margin:0 0 9px}
 .guia-mueve{display:flex;gap:8px;align-items:flex-start;font-size:11.5px;line-height:1.45;background:var(--guia-suave);border-left:2px solid var(--guia);padding:7px 9px;border-radius:0 4px 4px 0;margin-bottom:9px;color:#3c4252}
 .guia-estado{font-size:11.5px;line-height:1.4;padding:6px 9px;border-radius:4px;margin:0 0 9px}
@@ -62,6 +65,8 @@
   body>*:not(#informe){display:none!important}
   #informe{display:block;font:11pt/1.45 Georgia,'Times New Roman',serif;color:#111;padding:0 4mm}
   #informe h1{font:bold 17pt Arial,sans-serif;margin:0 0 3pt}
+  #informe .nombre{font:10pt Arial,sans-serif;margin:0 0 8pt}
+  #informe .nombre span{display:inline-block;width:90mm;border-bottom:.7pt solid #555}
   #informe .sub{font:9pt Arial,sans-serif;color:#555;margin:0 0 10pt}
   #informe h2.sec{font:bold 12pt Arial,sans-serif;margin:14pt 0 5pt;padding-bottom:2pt;border-bottom:1.5pt solid #e8590c;break-after:avoid}
   #informe h3{font:bold 10.5pt Arial,sans-serif;margin:9pt 0 3pt;break-after:avoid}

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Consola PET · simulador docente</title>
 <link rel="stylesheet" href="consola.css?v=6">
-<link rel="stylesheet" href="tutorial.css?v=1">
+<link rel="stylesheet" href="tutorial.css?v=2">
 </head>
 <body>
 <div id="consola">
@@ -108,11 +108,12 @@
     <button class="guia-x" id="guiaCerrar" aria-label="Cerrar el tutorial">✕</button>
   </div>
   <div class="guia-cuerpo">
+    <div class="guia-caso" id="guiaCaso" hidden></div>
     <h3 id="guiaTitulo">—</h3>
     <p class="guia-pregunta" id="guiaPregunta"></p>
     <div class="guia-mueve"><span aria-hidden="true">▸</span><span id="guiaMueve"></span></div>
     <p class="guia-estado" id="guiaEstado" hidden></p>
-    <textarea id="guiaNota" placeholder="Anoten aquí la respuesta…"></textarea>
+    <textarea id="guiaNota" placeholder="Anota aquí tu respuesta…"></textarea>
   </div>
   <div class="guia-pie">
     <button class="guia-nav" id="guiaAntes" aria-label="Paso anterior">←</button>
@@ -153,9 +154,11 @@
     <p>El ruido del CT pasa al PET corregido muy atenuado, porque el mapa de atenuación se suaviza a la resolución del PET; por eso ese efecto es de décimas de punto porcentual y casi no se ve.</p>
     <p>El botón «Original» de la ventana derecha muestra la misma vista tal como se adquirió, para comparar.</p>
     <h3>Tutorial</h3>
-    <p>El botón «Tutorial» abre un panel con diecinueve pasos y una pregunta en cada uno, desde la planificación hasta la generación de cortes en Volumina. Las respuestas se guardan en este navegador y «Finalizar y generar PDF» arma un informe con las preguntas, las respuestas y el estado de la consola. El tutorial no corrige las respuestas: solo indica si el paso se hizo en la consola.</p>
+    <p>El botón «Tutorial» abre un panel con diecinueve pasos y una pregunta en cada uno, desde la planificación hasta la generación de cortes en Volumina. Es un trabajo personal. Si cargas uno de los cinco casos de la entrega, la consola lo reconoce y cada pregunta se adapta a lo que ese estudio tiene de particular. Las respuestas se guardan en este navegador, separadas por caso, y «Finalizar y generar PDF» arma un informe con las preguntas, las respuestas y el estado de la consola. El tutorial no corrige las respuestas ni trae pauta: solo indica si el paso se hizo en la consola.</p>
     <h3>Volumina</h3>
-    <p>«Pasar a Volumina» abre el visor con el CT y el PET del rango que adquiriste, sin volver a cargar archivos: cortes en los tres planos, fusión, MIP y VRT, y generación de cortes. Recibe las imágenes como están en la consola, así que si cambiaste parámetros llegan simuladas y el visor lo avisa. El CT llega reducido a 256 de lado.</p>
+    <p>«Pasar a Volumina» abre el visor con el CT y el PET del rango que adquiriste, sin volver a cargar archivos: cortes en los tres planos, fusión, MIP y VRT, y generación de cortes. Recibe las imágenes como están en la consola, así que si cambiaste parámetros llegan simuladas y el visor lo avisa.</p>
+    <h3>Memoria</h3>
+    <p>El CT se usa a su resolución original, igual que en Volumina. Un CT de cuerpo entero ocupa entre 100 y 200 MB en la consola y el doble al pasar a Volumina. En un computador con poca memoria la página puede ponerse lenta o cerrarse: en ese caso cierra otras pestañas, o elige un rango más corto antes de pasar a Volumina, porque el visor solo recibe el rango adquirido.</p>
     <h3>Es ilustrativo</h3>
     <p>Las alternativas que aparecen al abrir las listas en gris. El valor marcado es el que se usó; los demás muestran qué se podría haber elegido en una consola, pero no cambian la imagen: el estudio ya está reconstruido y los datos crudos no vienen en el DICOM.</p>
     <p>La reproducción no vuelve a adquirir ni a reconstruir nada: muestra los cortes ya reconstruidos en el orden y con los tiempos en que se adquirieron. El CT dura lo que resulta de su largo y la velocidad de mesa de la cabecera, y se muestra en al menos 4 segundos para que se alcance a ver.</p>
@@ -165,7 +168,8 @@
 </div>
 
 <script src="vendor/dicomParser.min.js"></script>
-<script src="consola.js?v=7"></script>
-<script src="tutorial.js?v=1"></script>
+<script src="casos.js?v=1"></script>
+<script src="consola.js?v=9"></script>
+<script src="tutorial.js?v=2"></script>
 </body>
 </html>

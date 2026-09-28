@@ -104,16 +104,10 @@
       for (let i = 0; i < n; i++) v[i] = crudo[i] * im.slope + im.inter;
       im.pix = v;
     } else {
-      // El CT se guarda reducido (hasta 256 de lado) para no cargar 100 MB en memoria.
-      const k = Math.max(1, Math.round(im.cols / 256));
-      const r2 = Math.floor(im.rows / k), c2 = Math.floor(im.cols / k);
-      const v = new Int16Array(r2 * c2);
-      for (let y = 0; y < r2; y++) for (let x = 0; x < c2; x++) {
-        let a = 0;
-        for (let j = 0; j < k; j++) for (let i = 0; i < k; i++) a += crudo[(y * k + j) * im.cols + x * k + i];
-        v[y * c2 + x] = Math.round(a / (k * k) * im.slope + im.inter);
-      }
-      im.pix = v; im.k = k; im.r2 = r2; im.c2 = c2;
+      // El CT se conserva a su resolucion original, como en Volumina.
+      const v = new Int16Array(n);
+      for (let i = 0; i < n; i++) v[i] = Math.round(crudo[i] * im.slope + im.inter);
+      im.pix = v;
     }
     im.cab = cabecera(ds, s, f, lista);
     return im;
@@ -136,7 +130,7 @@
       duracion: f('x00181242'), tipoSerie: s('x00541000'), aceptacion: f('x00541200'), mash: s('x00541201'),
       // CT
       kv: f('x00180060'), ma: f('x00181151'), mas: f('x00181152'), tExp: f('x00181150'),
-      paso: f('x00189311'), ctdi: f('x00189345'), velMesa: f('x00189309'),
+      paso: f('x00189311'), ctdi: f('x00189345'), velMesa: f('x00189309'), factorSuv: f('x70531000'),
       modTipo: s('x00189323'), ahorro: f('x00189324'), colUna: f('x00189306'), colTotal: f('x00189307'), avance: f('x00189310'), fov: f('x00181100'), fovDatos: f('x00180090'),
       filtro: s('x00181160'),
     };
@@ -153,27 +147,46 @@
     return c;
   }
 
+  // Serie sin correccion de atenuacion. Algunos equipos marcan ATTN tambien en la serie sin
+  // corregir, asi que la descripcion de la serie manda sobre la lista de correcciones.
+  const DESC_NAC = new RegExp('(^|[^a-z])nac([^a-z]|$)|uncorr|non.?ac([^a-z]|$)|(^|[^a-z])no.?ac([^a-z]|$)|sin corr', 'i');
+  const esNac = v => DESC_NAC.test(v.desc || '') || !v.cab.corregida.includes('ATTN');
+
   // ---------- armado de volumenes ----------
   function armarSerie(ims) {
     ims.sort((a, b) => b.z - a.z);                         // indice 0 = corte mas craneal (HFS)
     const limpio = ims.filter((im, i) => i === 0 || Math.abs(im.z - ims[i - 1].z) > 1e-3);
     const p = limpio[0], n = limpio.length;
-    const rows = p.mod === 'CT' ? p.r2 : p.rows, cols = p.mod === 'CT' ? p.c2 : p.cols;
+    // Tope de Volumina: 128 millones de voxeles. Solo si el CT lo supera se reduce a la mitad.
+    const k = (p.mod === 'CT' && n * p.rows * p.cols > 128 * 1024 * 1024) ? 2 : 1;
+    const rows = Math.floor(p.rows / k), cols = Math.floor(p.cols / k);
     const vol = p.mod === 'CT' ? new Int16Array(n * rows * cols) : new Float32Array(n * rows * cols);
-    limpio.forEach((im, i) => { if (im.pix.length === rows * cols) vol.set(im.pix, i * rows * cols); im.pix = null; });
-    const k = p.k || 1;
+    limpio.forEach((im, i) => {
+      if (im.pix.length === p.rows * p.cols) {
+        if (k === 1) vol.set(im.pix, i * rows * cols);
+        else for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) { let a = 0; for (let j = 0; j < k; j++) for (let q = 0; q < k; q++) a += im.pix[(y * k + j) * p.cols + x * k + q]; vol[i * rows * cols + y * cols + x] = Math.round(a / (k * k)); }
+      }
+      im.pix = null;
+    });
     const media = c => { const l = limpio.map(im => im[c]).filter(v => !Number.isNaN(v)); return l.length ? l.reduce((a, b) => a + b, 0) / l.length : NaN; };
     const topes = limpio.map(im => im.tope).filter(v => !Number.isNaN(v)).sort((a, b) => a - b);
     return {
       maMedio: media('ma'), masMedio: media('mas'), ctdiMedio: media('ctdi'), topeMediano: topes.length ? topes[Math.floor(topes.length / 2)] : NaN,
-      mod: p.mod, uid: p.serie, desc: p.desc, cab: p.cab, n, rows, cols, vol,
+      mod: p.mod, uid: p.serie, desc: p.desc, cab: p.cab, n, rows, cols, vol, reducido: k,
       dx: p.ps[1] * k, dy: p.ps[0] * k,
       x0: p.ipp[0] + (k - 1) * p.ps[1] / 2, y0: p.ipp[1] + (k - 1) * p.ps[0] / 2,
       zs: limpio.map(im => im.z), dz: n > 1 ? Math.abs(limpio[0].z - limpio[n - 1].z) / (n - 1) : (p.cab.grosor || 1),
       maZ: limpio.map(im => im.ma), ctdiZ: limpio.map(im => im.ctdi),
       // mAs efectivo por corte: el de la cabecera o, si falta, corriente x tiempo de rotacion / pitch.
       masZ: limpio.map(im => !Number.isNaN(im.mas) ? im.mas : (im.ma * im.tExp / 1000 / (im.paso > 0 ? im.paso : 1))),
-      tiempos: limpio.map(im => im.tAdq), colsOrig: p.cols, rowsOrig: p.rows, psOrig: p.ps[1],
+      tiempos: (() => {
+        // Algunos equipos escriben la misma hora de adquisicion en todos los cortes y dejan la cama
+        // en el tiempo de referencia del cuadro, que es la mitad de la cama: inicio = referencia - duracion / 2.
+        const t = limpio.map(im => im.tAdq), ref = limpio.map(im => im.tRef), dur = p.cab.duracion || 0;
+        const distintos = l => new Set(l.filter(x => !Number.isNaN(x)).map(x => Math.round(x))).size;
+        return (distintos(t) <= 1 && distintos(ref.map(x => x / 1000)) > 1) ? ref.map(x => (x - dur / 2) / 1000) : t;
+      })(),
+      colsOrig: p.cols, rowsOrig: p.rows, psOrig: p.ps[1],
     };
   }
 
@@ -182,12 +195,12 @@
     const dur = (pet.cab.duracion || 0) / 1000;
     const validos = t.filter(v => !Number.isNaN(v));
     if (!validos.length) return { camas: [{ t: 0, i0: 0, i1: n - 1, c0: 0, c1: n - 1 }], completa: new Float32Array(n).fill(dur || 60), total: dur || 60, dur: dur || 60, continuo: false, sentido: '—' };
-    // Mesetas: tramos de al menos 3 cortes con la misma hora. Cada una es el centro de una cama.
+    // Mesetas: tramos de al menos 5 cortes con la misma hora. Cada una es el centro de una cama.
     let mes = [], i = 0;
     while (i < n) {
       let j = i;
       while (j + 1 < n && Math.abs(t[j + 1] - t[i]) <= 1.01) j++;
-      if (j - i + 1 >= 3) mes.push({ t: t[Math.floor((i + j) / 2)], i0: i, i1: j });
+      if (j - i + 1 >= 5) mes.push({ t: t[Math.floor((i + j) / 2)], i0: i, i1: j });
       i = j + 1;
     }
     mes.sort((a, b) => a.t - b.t);
@@ -270,7 +283,7 @@
       decir(comprimidas ? 'Las imágenes vienen comprimidas y esta consola solo lee DICOM sin comprimir.' : 'No encontré una serie PET axial entre los archivos (' + leidos + ' imágenes DICOM leídas).', true);
       return;
     }
-    const corr = v => v.cab.corregida.includes('ATTN');
+    const corr = v => !esNac(v);
     pets.sort((a, b) => (b.n - a.n) || (corr(b) - corr(a)));
     const principal = pets[0];
     const misma = v => v.n === principal.n && Math.abs(v.zs[0] - principal.zs[0]) < 1 && v.rows === principal.rows;
@@ -285,6 +298,7 @@
     if (E.ct) E.ct.dePet = principal.zs.map(z => { let m = 0; E.ct.zs.forEach((zz, i) => { if (Math.abs(zz - z) < Math.abs(E.ct.zs[m] - z)) m = i; }); return Math.abs(E.ct.zs[m] - z) <= E.ct.dz ? m : -1; });
 
     Object.assign(E, estimarCamas(principal));
+    { const m = /^PET-0?(\d+)$/i.exec(principal.cab.id || ''); E.caso = (m && window.PET_CASOS && window.PET_CASOS[+m[1]]) ? +m[1] : 0; }
     E.espacial = E.camas.slice().sort((a, b) => a.c0 - b.c0);
     E.pets.forEach(v => { v.nivelBase = v.topeMediano > 0 ? v.topeMediano : percentil(v.vol, 0.999); });
     E.ac = E.pets.find(corr) || null; E.nac = E.pets.find(v => !corr(v)) || null;
@@ -294,8 +308,8 @@
     E.nivel = 1; $('nivel').value = 100; E.giro = 0; $('giro').value = 0;
     E.mip = { clave: '', filas: new Float32Array(principal.n * principal.cols), hechas: new Uint8Array(principal.n) };
     planificar(); baseSim();
-    const partes = [E.pets.length + ' serie(s) PET de ' + principal.n + ' cortes', E.ct ? 'CT de ' + E.ct.n + ' cortes' : 'sin CT', E.continuo ? 'camilla en movimiento continuo' : E.camas.length + ' cama(s) disponibles de ' + num(E.dur / 60, 1) + ' min'];
-    decir('Estudio cargado: ' + partes.join(', ') + '. ' + AYUDA_RANGO + (E.ignoradas.length ? ' Series no usadas: ' + E.ignoradas.join(', ') + '.' : ''));
+    const partes = [E.pets.length + ' serie(s) PET de ' + principal.n + ' cortes', E.ct ? 'CT de ' + E.ct.n + ' cortes a ' + E.ct.cols + ' × ' + E.ct.rows + ' (' + Math.round(E.ct.vol.length * 2 / 1048576) + ' MB)' : 'sin CT', E.continuo ? 'camilla en movimiento continuo' : E.camas.length + ' cama(s) disponibles de ' + num(E.dur / 60, 1) + ' min'];
+    decir((E.caso ? 'Caso ' + E.caso + ' cargado: ' : 'Estudio cargado: ') + partes.join(', ') + '. ' + AYUDA_RANGO + (E.ignoradas.length ? ' Series no usadas: ' + E.ignoradas.join(', ') + '.' : ''));
     refrescarTodo();
   }
 
@@ -471,6 +485,13 @@
     return { sigma: Math.max(1, l[Math.floor(l.length * 0.2)]), como: 'medido en la imagen' };
   }
 
+  // Valor de la imagen que corresponde a SUV 1, o 0 si la cabecera no permite calcularlo.
+  function suvDe(v) {
+    const c = v.cab;
+    if (c.unidades === 'BQML' && c.peso > 0 && c.dosis > 0) { const t = captacionDe(c); return c.dosis * (c.vidaMedia > 0 && !Number.isNaN(t) ? Math.exp(-LN2 * t * 60 / c.vidaMedia) : 1) / (c.peso * 1000); }
+    if (c.factorSuv > 0) return 1 / c.factorSuv;
+    return 0;
+  }
   function captacionDe(c) { const a = tmASeg(c.horaIny), b = tmASeg(c.horaSerie); return (Number.isNaN(a) || Number.isNaN(b)) ? NaN : ((b - a + 86400) % 86400) / 60; }
   function baseSim() {
     const p = E.pets[0], c = p.cab, m = partirMetodo(c.metodo), fl = partirFiltro(c.nucleo);
@@ -533,7 +554,7 @@
   function simularPet() {
     const S = E.sim, B = E.base, f = fraccionCuentas(), eps = epsCt();
     E.pets.forEach((p, idx) => {
-      const corr = p.cab.corregida.includes('ATTN');
+      const corr = !esNac(p);
       const hay = E.fase === 'terminado' && (f < 0.999 || (B.iter && S.iter < B.iter) || S.fwhm > B.fwhm + 1e-6 || (corr && eps > 1e-5));
       if (!hay) { p.sim = null; return; }
       const W = p.cols, H = p.rows, N = W * H, a = new Float32Array(N), t = new Float32Array(N), r = new Float32Array(N), b = new Float32Array(N);
@@ -575,7 +596,7 @@
     if (f < 0.999) l.push(Math.round(f * 100) + ' % de cuentas');
     if (B.iter && S.iter < B.iter) l.push(S.iter + ' it.');
     if (S.fwhm > B.fwhm) l.push('filtro ' + num(S.fwhm, 1) + ' mm');
-    if (p.cab.corregida.includes('ATTN') && epsCt() > 1e-5) l.push('CT simulado');
+    if (!esNac(p) && epsCt() > 1e-5) l.push('CT simulado');
     return l.join(', ');
   }
   function notaCt(j) {
@@ -788,7 +809,7 @@
     if (E.modo === 'ct' && j < 0) texto(g, d, ['Corte de CT aún no adquirido'], w / 2, h / 2 - 6 * d, '#4fe3ff', 'center');
     texto(g, d, ['IMA ' + (i + 1) + ' / ' + p.n, 'SP ' + num(p.zs[i], 1), E.lectura || ''], 8 * d, 8 * d, '#fff');
     texto(g, d, leyenda.filter(Boolean), 8 * d, h - (22 + 13 * leyenda.filter(Boolean).length) * d, '#fff');
-    if (E.modo !== 'ct') texto(g, d, ['T ' + num(tope, 0) + ' ' + (p.cab.unidades || ''), 'B 0'], w - 8 * d, h - 50 * d, '#fff', 'right');
+    if (E.modo !== 'ct') texto(g, d, [suvDe(p) > 0 ? 'SUV ' + num(tope / suvDe(p), 1) : '', 'T ' + num(tope, tope < 10 ? 2 : 0) + ' ' + (p.cab.unidades || ''), 'B 0'].filter(Boolean), w - 8 * d, h - 64 * d, '#fff', 'right');
     texto(g, d, ['R'], 8 * d, h / 2 - 6 * d, '#fff');
     $('rotAxial').textContent = 'Axial · ' + (E.modo === 'pet' ? 'PET' : E.modo === 'ct' ? 'CT' : 'Fusión');
     $('corte').value = i;
@@ -869,7 +890,7 @@
     const p = pet(), c = p.cab;
     $('protocolo').textContent = c.estudio || c.protocolo || 'PETCT';
     const oculto = $('ocultarId').checked;
-    $('identidad').textContent = oculto ? 'Paciente oculto' : [c.nombre, c.id].filter(Boolean).join(' · ');
+    $('identidad').textContent = E.caso ? 'Caso ' + E.caso : oculto ? 'Paciente oculto' : [c.nombre, c.id].filter(Boolean).join(' · ');
     const mci = c.dosis ? c.dosis / 3.7e7 : NaN;
     $('resumen').textContent = num(E.largo, 1) + ' mm   ' + num(E.total / 60, 0) + ' min   ' + (E.unidadDosis === 'mCi' ? num(mci, 1) + ' mCi' : num(c.dosis / 1e6, 0) + ' MBq');
   }
@@ -964,7 +985,7 @@
       bloque('Tasa relativa por cama (estimada desde la imagen)', '<canvas id="grafico"></canvas><div class="leyenda"><span style="--c:#1a9a3c">Actividad en el campo, relativa</span><span style="--c:#d33">Instante actual</span></div>') + '</div>';
     if (pest === 'recon') {
       const trabajos = [1, 2, 3, 4, 5, 6, 7, 8].map(k => '<span class="t' + (k <= E.pets.length ? ' hay' : '') + (k - 1 === E.trabajo ? ' sel' : '') + '" data-trabajo="' + (k - 1) + '">' + k + '<span class="p"></span></span>').join('');
-      const tipo = c.corregida.includes('ATTN') ? 'Corrected' : 'Uncorrected';
+      const tipo = esNac(p) ? 'Uncorrected' : 'Corrected';
       const listaCt = [E.ct].concat(E.otrosCt).filter(Boolean).map(v => v.desc);
       const acCt = (c.atenuacion || '').replace(/^measured,\s*/i, '').trim();
       const disp = /relative/i.test(c.dispersion) ? 'Relative' : /absolute/i.test(c.dispersion) ? 'Absolute' : (c.dispersion || 'None');
@@ -1055,7 +1076,7 @@
       bloque('', campo('FoV', num(c.fov, 0), { ops: [300, 400, 500, 700, 780], un: 'mm' }) +
         campo('Image size', v.colsOrig, { ops: [512] }) + campo('Pixel', num(v.psOrig, 2), { un: 'mm' }) +
         campo('Increment', num(v.dz, 1), { un: 'mm' }) + campo('Uso', 'Corrección de atenuación y localización', { larga: true })) + '</div>' + PIE_SIM +
-      '<p class="ayudita">El CT se muestra reducido a ' + v.cols + ' × ' + v.rows + ' para aligerar la página; los valores de la tarjeta son los de la cabecera.</p>';
+      '<p class="ayudita">' + (v.reducido > 1 ? 'Este CT supera los 128 millones de vóxeles y se muestra reducido a ' + v.cols + ' × ' + v.rows + '; los valores de la tarjeta son los de la cabecera.' : 'El CT se usa a su resolución original, ' + v.cols + ' × ' + v.rows + ' × ' + v.n + ': ocupa unos ' + Math.round(v.vol.length * 2 / 1048576) + ' MB de memoria en la consola y el doble al pasar a Volumina. Si el computador tiene poca memoria, la página puede ponerse lenta o cerrarse.') + '</p>';
     return tarjetaAuto(c);
   }
 
@@ -1139,8 +1160,7 @@
     const pets = E.pets.map(v => {
       const N = v.rows * v.cols, datos = new Float32Array(nz * N), vol = v.sim || v.vol, c = v.cab;
       for (let k = 0; k < nz; k++) { const i = E.r1 - k; datos.set(vol.subarray(i * N, (i + 1) * N), k * N); }
-      let suv = 0;
-      if (c.unidades === 'BQML' && c.peso > 0 && c.dosis > 0) { const t = captacionDe(c); suv = c.dosis * (c.vidaMedia > 0 && !Number.isNaN(t) ? Math.exp(-LN2 * t * 60 / c.vidaMedia) : 1) / (c.peso * 1000); }
+      const suv = suvDe(v);
       return Object.assign(comun(c), { nx: v.cols, ny: v.rows, nz, spacing: [v.dx, v.dy, v.dz], origin: [v.x0, v.y0, v.zs[E.r1]], datos, modalidad: 'PT', unidades: c.unidades,
         descripcion: v.desc + (v.sim ? ' · simulado' : ''), simulado: !!v.sim, tope: v.nivelBase * E.nivel, suv });
     });
@@ -1171,7 +1191,7 @@
     if (E.fase !== 'terminado') { decir('Volumina se abre cuando termina el examen: primero adquiere el CT y el PET.', true); return; }
     $('capaVolumina').hidden = false;
     const m = $('marcoVolumina');
-    if (!m.getAttribute('src')) m.setAttribute('src', 'volumina/index.html?v=3'); else enviarAVolumina();
+    if (!m.getAttribute('src')) m.setAttribute('src', 'volumina/index.html?v=4'); else enviarAVolumina();
     decir('Estudio enviado a Volumina: ' + (E.ct ? 'CT y ' : '') + E.pets.length + ' serie(s) PET, ' + (E.r1 - E.r0 + 1) + ' cortes.');
   }
   // El tutorial usa esto para llevar la consola a la pantalla de la que habla cada paso.
@@ -1253,12 +1273,8 @@
     if (E.modo !== 'ct' && revelado(E.corte) && x >= 0 && y >= 0 && x < p.cols && y < p.rows) {
       const v = (p.sim || p.vol)[(E.corte * p.rows + y) * p.cols + x];
       t = num(v, 0) + ' ' + (p.cab.unidades || '');
-      const c = p.cab;
-      if (c.unidades === 'BQML' && c.peso > 0 && c.dosis > 0) {
-        const tI = tmASeg(c.horaIny), tS = tmASeg(c.horaSerie);
-        const dec = (c.vidaMedia && !Number.isNaN(tI) && !Number.isNaN(tS)) ? Math.exp(-LN2 * ((tS - tI + 86400) % 86400) / c.vidaMedia) : 1;
-        t += '   SUVbw ' + num(v / (c.dosis * dec / (c.peso * 1000)), 2);
-      }
+      const su = suvDe(p);
+      if (su > 0) t += '   SUVbw ' + num(v / su, 2);
     } else if (E.modo === 'ct' && ctVisible(E.corte)) {
       const ct = E.ct, cx = Math.floor((fx - (ct.x0 - ct.dx / 2)) / ct.dx), cy = Math.floor((fy - (ct.y0 - ct.dy / 2)) / ct.dy);
       const cs = ctCorteSim(ct.dePet[E.corte]);
@@ -1360,5 +1376,5 @@
 
   window.addEventListener('error', ev => { (window.__errores = window.__errores || []).push(String(ev.message)); });
   enlazar(); refrescarTodo();
-  window.ConsolaPet = { estado: E, ir, abrirVolumina, cerrarVolumina, voluminaLista, estudioParaVolumina, dosisCt, opciones, aplicarSim, restaurar, fraccionCuentas, epsCt, ctCorteSim, ctFactores, cargar, iniciar, pausar, saltar, terminar, planificar, fijarRango, revelado, ctVisible, camaActual };
+  window.ConsolaPet = { estado: E, suvDe, ir, abrirVolumina, cerrarVolumina, voluminaLista, estudioParaVolumina, dosisCt, opciones, aplicarSim, restaurar, fraccionCuentas, epsCt, ctCorteSim, ctFactores, cargar, iniciar, pausar, saltar, terminar, planificar, fijarRango, revelado, ctVisible, camaActual };
 })();

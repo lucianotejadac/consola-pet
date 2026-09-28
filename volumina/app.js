@@ -3,7 +3,7 @@ const $=id=>document.getElementById(id),names=['axial','coronal','sagittal'];
 let volume=null,position=[0,0,0],groups=new Map(),loading=false,mode='vrt',yaw=.35,pitch=.12,zoom=1,scheduled=false;
 let spect=null,spectGroups=new Map(),spectMaximum=0,fusionSample=null;
 let baseMaximum=0,uploadedVolume=null,uploadedSpect=null;
-function suvTexto(v,lo,hi){return v&&v.suv>0?`SUVbw ${(lo/v.suv).toFixed(1)} – ${(hi/v.suv).toFixed(1)}.`:'Sin SUV: la cabecera no trae el peso del paciente.';}
+function suvTexto(v,lo,hi){return v&&v.suv>0?`SUVbw ${(lo/v.suv).toFixed(1)} – ${(hi/v.suv).toFixed(1)}.`:'Sin SUV: la cabecera no trae los datos para calcularlo.';}
 const status=(text,error=false)=>{$('status').textContent=text;$('status').classList.toggle('error',error);};
 const layouts={};
 const mprZoom=Object.fromEntries(names.map(n=>[n,1])),mprZoomMode=Object.fromEntries(names.map(n=>[n,false]));

@@ -141,3 +141,35 @@ Participantes: Luciano Tejada (docente) y Claude (Claude Code).
 - El diálogo de impresión no se puede probar sin interfaz: el contenido del informe está comprobado, su aspecto impreso no.
 - Las preguntas no citan páginas de la clase, como sí hace la consola TC; falta saber contra qué material se citarían.
 - No hay pauta de respuestas.
+
+## 2026-09-28 · Séptima ronda: cinco casos, tutorial personal y CT completo
+
+Participantes: Luciano Tejada (docente) y Claude (Claude Code).
+
+**Contexto.** El docente indicó que el tutorial es personal y sin corregir, que el CT no se reduzca, y pidió cuatro casos más, con preguntas que varíen según las particularidades de cada caso, empaquetados en un ZIP por estudiante como en las entregas anteriores. En la ronda de confirmación respondió: variedad de equipos y patologías solo si se puede; confía en la elección de casos; renombrar la identidad; dejar la marca de paso hecho; CT como en Volumina original, con aviso sobre la memoria.
+
+**Decisiones.**
+- **Casos**, todos públicos de TCIA y de equipos distintos: 1) tórax, abdomen y pelvis con tiempo de vuelo, sin peso en la cabecera; 2) cuerpo entero en un equipo de otro fabricante, de caudal a craneal, sin iteraciones ni CTDIvol en la cabecera; 3) paciente con los pies primero, PET en cuentas con factor de SUV propio y CT sin modulación; 4) equipo antiguo con OSEM 2i8s, cabecera sin radiofármaco y marcos de referencia distintos entre CT y PET; 5) extremidades inferiores en melanoma, con camas de 30 segundos. Se descartó un equipo más nuevo de la lista porque su CT, de 551 cortes, supera el tope de 128 millones de vóxeles.
+- **No se inventa clínica.** El antecedente de cada caso es el diagnóstico de la colección y lo que trae la cabecera. No hay informes ni hallazgos.
+- **Preguntas por caso**: cada pregunta conserva su forma general y nueve de los diecinueve pasos agregan una frase propia del caso (radiofármaco, rango, modulación, dosis del CT, adquisición del PET, reconstrucción, serie sin corregir, registro y escala). La ficha del caso aparece en el primer paso.
+- **El caso se reconoce por el identificador de paciente** de la entrega (PET-01 a PET-05). Los estudiantes no aparecen en el simulador.
+- **Tutorial personal**: consignas en «tú», respuestas guardadas por caso, informe con una línea para el nombre. No corrige ni trae pauta.
+- **CT a resolución original.** Solo se reduce a la mitad si supera los 128 millones de vóxeles, que es el tope de Volumina. La tarjeta del CT, el diálogo «Qué es real y qué no» y el aviso de Volumina dicen cuánta memoria ocupa y qué hacer si el computador no da.
+- **Entrega**: `PET <Nombre>.zip` con `Caso n/PET AC`, `PET NAC` y `CT`, y un LEEME con las instrucciones de carga y la cita de las colecciones. Paciente renombrado a «PET CASO n», identificadores regenerados, sin etiquetas del ensayo ni de la colección; se conserva el factor de SUV del fabricante. Las imágenes no se modifican.
+
+**Lo que hubo que generalizar en el simulador.**
+- **Camas por tiempo de referencia del cuadro**, cuando el equipo escribe la misma hora de adquisición en todos los cortes.
+- **Una cama es un tramo de al menos 5 cortes con la misma hora**; con 3, una pendiente suave producía una cama falsa en el caso 5.
+- **SUV** por peso y actividad, o con el factor que guarda el equipo cuando la imagen viene en cuentas.
+- **Serie sin corregir**: un equipo marca la corrección de atenuación también en la serie sin corregir, así que la descripción de la serie manda sobre la lista de correcciones.
+- **Escala de Volumina**: si el máximo del volumen es muchas veces el nivel de trabajo, el 100 % se limita a 8 veces ese nivel, y el visor lo avisa.
+- **Marcos de referencia distintos** (caso 4): Volumina no fusiona solo y pide habilitar el ajuste exploratorio. Se dejó así y la pregunta del paso lo explica.
+
+**Validación.** Verificación de la entrega sobre 3.744 DICOM: ninguno conserva identificadores ni nombres de colección, todos sin comprimir, un caso por ZIP. Cada ZIP se cargó entero en la consola y se recorrió hasta Volumina: 14, 14, 14, 14 y 13 comprobaciones correctas, sin fallas. Pruebas anteriores repetidas: consola 76 y 47, tutorial 52, sin fallas. Memoria usada por la página con el CT completo: entre 520 y 1.000 MB según el caso.
+
+**Error propio que conviene recordar.** Una expresión regular escrita desde un guion de Python perdió sus barras y quedó con caracteres de retroceso invisibles; la sintaxis era válida y la prueba del caso 3 fue la que lo mostró. Ahora el guion comprueba que no queden esos caracteres.
+
+**Pendiente.**
+- Las preguntas por caso las redactó Claude a partir de las cabeceras: falta la revisión docente.
+- El caso 5 no tiene cuerpo entero, solo extremidades.
+- En un computador con poca memoria los casos 2 y 5 pueden no abrir en Volumina con el rango completo.

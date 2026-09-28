@@ -3,7 +3,7 @@
 window.addEventListener('error', ev => { (window.__errores = window.__errores || []).push(String(ev.message)); });
 const ConsolaPuente = (() => {
   'use strict';
-  let estudio = null;
+  let estudio = null, limitada = 0;
   const generados = {};
   const medio = v => Math.round(v * 2) / 2;
 
@@ -48,13 +48,16 @@ const ConsolaPuente = (() => {
     } else {
       p.add(new Option(conCt ? 'Sin PET' : 'El PET es el volumen base', '')); p.disabled = true;
       $('spectMetadata').textContent = conCt ? 'Sin serie PET.' : 'El PET se muestra solo, como volumen base: MPR en gris y MIP o VRT en 3D.';
-      if (!conCt) escala3D(v, baseMaximum);
+      if (!conCt) { baseMaximum = tope8(v, baseMaximum); escala3D(v, baseMaximum); update3DControls(); }
       avisar(v);
     }
     $('series').disabled = $('series').options.length < 2;
   }
 
   // Parte con la misma escala de la consola, y no con el maximo del volumen, que suele ser la vejiga.
+  // Si el maximo del volumen es muchas veces el nivel de la consola, la escala en porcentaje no
+  // alcanza para ajustarla: el 100 % se limita a 8 veces ese nivel.
+  const tope8 = (v, maximo) => (v.tope > 0 && maximo > 8 * v.tope) ? 8 * v.tope : maximo;
   function escala3D(v, maximo) {
     const alto = Math.max(1, Math.min(100, medio(100 * v.tope / maximo))) || 100;
     $('volumeHigh').value = alto; $('volumeLow').value = Math.max(0, Math.min(alto - 0.5, medio(alto * 0.04)));
@@ -69,6 +72,7 @@ const ConsolaPuente = (() => {
     if (!estudio || !estudio.ct) return;
     const v = estudio.pets[+$('spectSeries').value || 0];
     try { setSpect(v); } catch (err) { status('No se pudo fusionar: ' + err.message, true); return; }
+    const real = spectMaximum; spectMaximum = tope8(v, spectMaximum); limitada = spectMaximum < real ? real : 0;
     const alto = escala3D(v, spectMaximum);
     $('spectHigh').value = alto; $('spectLow').value = Math.max(0, Math.min(alto - 0.5, medio(alto * 0.1)));
     $('spectSeries').disabled = estudio.pets.length < 2;
@@ -78,7 +82,7 @@ const ConsolaPuente = (() => {
 
   function avisar(v) {
     const partes = [estudio.ct ? 'CT ' + estudio.ct.nx + ' × ' + estudio.ct.ny + ' × ' + estudio.ct.nz : 'sin CT', 'PET ' + v.nx + ' × ' + v.ny + ' × ' + v.nz + ' (' + v.description + ')'];
-    status('Estudio recibido de la consola: ' + partes.join(' + ') + '.' + (estudio.nota ? ' ' + estudio.nota : ''));
+    status('Estudio recibido de la consola: ' + partes.join(' + ') + '.' + (estudio.nota ? ' ' + estudio.nota : '') + (limitada ? ' El máximo real del PET es ' + limitada.toPrecision(4) + '; la escala se limitó a 8 veces el nivel de la consola para poder ajustarla.' : ''));
   }
 
   // Lo que se genero en «Generar cortes», para el informe del tutorial.
