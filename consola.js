@@ -117,7 +117,7 @@
     const c = {
       fabricante: s('x00080070'), modelo: s('x00081090'), software: s('x00181020'),
       estudio: s('x00081030'), serie: s('x0008103e'), protocolo: s('x00181030'),
-      marco: s('x00200052'), estudioUid: s('x0020000d'), estudioId: s('x00200010'), sopClass: s('x00080016'), horaEstudio: s('x00080030'),
+      derivacion: s('x00082111'), marco: s('x00200052'), estudioUid: s('x0020000d'), estudioId: s('x00200010'), sopClass: s('x00080016'), horaEstudio: s('x00080030'),
       id: s('x00100020'), nombre: s('x00100010'), sexo: s('x00100040'), edad: s('x00101010'),
       peso: f('x00101030'), talla: f('x00101020'), posicion: s('x00185100'), parte: s('x00180015'),
       fechaEstudio: s('x00080020'), fechaSerie: s('x00080021'), fechaAdq: s('x00080022'),
@@ -173,6 +173,8 @@
     return {
       maMedio: media('ma'), masMedio: media('mas'), ctdiMedio: media('ctdi'), topeMediano: topes.length ? topes[Math.floor(topes.length / 2)] : NaN,
       mod: p.mod, uid: p.serie, desc: p.desc, cab: p.cab, n, rows, cols, vol, reducido: k,
+      // Un CT recortado lo declara en su cabecera, con la matriz con que se adquirio.
+      recorte: (() => { const m = /recortado.*?Matriz original (\d+) x (\d+)/i.exec(p.cab.derivacion || ''); return m ? { cols: +m[1], rows: +m[2] } : null; })(),
       dx: p.ps[1] * k, dy: p.ps[0] * k,
       x0: p.ipp[0] + (k - 1) * p.ps[1] / 2, y0: p.ipp[1] + (k - 1) * p.ps[0] / 2,
       zs: limpio.map(im => im.z), dz: n > 1 ? Math.abs(limpio[0].z - limpio[n - 1].z) / (n - 1) : (p.cab.grosor || 1),
@@ -308,7 +310,7 @@
     E.nivel = 1; $('nivel').value = 100; E.giro = 0; $('giro').value = 0;
     E.mip = { clave: '', filas: new Float32Array(principal.n * principal.cols), hechas: new Uint8Array(principal.n) };
     planificar(); baseSim();
-    const partes = [E.pets.length + ' serie(s) PET de ' + principal.n + ' cortes', E.ct ? 'CT de ' + E.ct.n + ' cortes a ' + E.ct.cols + ' × ' + E.ct.rows + ' (' + Math.round(E.ct.vol.length * 2 / 1048576) + ' MB)' : 'sin CT', E.continuo ? 'camilla en movimiento continuo' : E.camas.length + ' cama(s) disponibles de ' + num(E.dur / 60, 1) + ' min'];
+    const partes = [E.pets.length + ' serie(s) PET de ' + principal.n + ' cortes', E.ct ? 'CT de ' + E.ct.n + ' cortes a ' + E.ct.cols + ' × ' + E.ct.rows + (E.ct.recorte ? ', recortado desde ' + E.ct.recorte.cols + ' × ' + E.ct.recorte.rows : '') + ' (' + Math.round(E.ct.vol.length * 2 / 1048576) + ' MB)' : 'sin CT', E.continuo ? 'camilla en movimiento continuo' : E.camas.length + ' cama(s) disponibles de ' + num(E.dur / 60, 1) + ' min'];
     decir((E.caso ? 'Caso ' + E.caso + ' cargado: ' : 'Estudio cargado: ') + partes.join(', ') + '. ' + AYUDA_RANGO + (E.ignoradas.length ? ' Series no usadas: ' + E.ignoradas.join(', ') + '.' : ''));
     refrescarTodo();
   }
@@ -1074,9 +1076,9 @@
       bloque('', campo('Series description', v.desc, { larga: true }) + vivo('Slice', 'thk', O, { un: 'mm' }) +
         vivo('Kernel', 'ker', O) + campo('Window', ventanas || '—', { larga: true })) +
       bloque('', campo('FoV', num(c.fov, 0), { ops: [300, 400, 500, 700, 780], un: 'mm' }) +
-        campo('Image size', v.colsOrig, { ops: [512] }) + campo('Pixel', num(v.psOrig, 2), { un: 'mm' }) +
+        campo('Image size', v.recorte ? v.recorte.cols : v.colsOrig, { ops: [512], un: v.recorte ? 'adquirida; cargada recortada a ' + v.cols + ' × ' + v.rows : '' }) + campo('Pixel', num(v.psOrig, 2), { un: 'mm' }) +
         campo('Increment', num(v.dz, 1), { un: 'mm' }) + campo('Uso', 'Corrección de atenuación y localización', { larga: true })) + '</div>' + PIE_SIM +
-      '<p class="ayudita">' + (v.reducido > 1 ? 'Este CT supera los 128 millones de vóxeles y se muestra reducido a ' + v.cols + ' × ' + v.rows + '; los valores de la tarjeta son los de la cabecera.' : 'El CT se usa a su resolución original, ' + v.cols + ' × ' + v.rows + ' × ' + v.n + ': ocupa unos ' + Math.round(v.vol.length * 2 / 1048576) + ' MB de memoria en la consola y el doble al pasar a Volumina. Si el computador tiene poca memoria, la página puede ponerse lenta o cerrarse.') + '</p>';
+      '<p class="ayudita">' + (v.reducido > 1 ? 'Este CT supera los 128 millones de vóxeles y se muestra reducido a ' + v.cols + ' × ' + v.rows + '; los valores de la tarjeta son los de la cabecera.' : (v.recorte ? 'Este CT viene recortado: se le quitó el aire de arriba y de abajo para que ocupe menos memoria. Conserva el tamaño de píxel, toda la anatomía y la camilla; la matriz adquirida era de ' + v.recorte.cols + ' × ' + v.recorte.rows + '. ' : '') + 'El CT se usa a su resolución original, ' + v.cols + ' × ' + v.rows + ' × ' + v.n + ': ocupa unos ' + Math.round(v.vol.length * 2 / 1048576) + ' MB de memoria en la consola y el doble al pasar a Volumina. Si el computador tiene poca memoria, la página puede ponerse lenta o cerrarse.') + '</p>';
     return tarjetaAuto(c);
   }
 
@@ -1154,11 +1156,13 @@
   // Volumina recibe lo que la consola tiene en memoria: el rango adquirido, con los cortes
   // ordenados de caudal a craneal, y las imagenes tal como se ven (simuladas si hay cambios).
   let voluminaCargada = false, voluminaEnviado = '';
-  function estudioParaVolumina() {
+  function estudioParaVolumina(F) {
+    // F es el constructor de arreglos del visor: asi los datos se escriben una sola vez, ya en su lugar.
+    F = F || Float32Array;
     const oculto = $('ocultarId').checked, base = E.pets[0].cab, nz = E.r1 - E.r0 + 1;
     const comun = c => ({ marco: c.marco, pacienteId: oculto ? 'OCULTO' : (base.id || 'CONSOLA-PET'), pacienteNombre: oculto ? '' : base.nombre, estudioUid: c.estudioUid, estudioId: c.estudioId, fecha: c.fechaEstudio, hora: c.horaEstudio, sopClass: c.sopClass });
     const pets = E.pets.map(v => {
-      const N = v.rows * v.cols, datos = new Float32Array(nz * N), vol = v.sim || v.vol, c = v.cab;
+      const N = v.rows * v.cols, datos = new F(nz * N), vol = v.sim || v.vol, c = v.cab;
       for (let k = 0; k < nz; k++) { const i = E.r1 - k; datos.set(vol.subarray(i * N, (i + 1) * N), k * N); }
       const suv = suvDe(v);
       return Object.assign(comun(c), { nx: v.cols, ny: v.rows, nz, spacing: [v.dx, v.dy, v.dz], origin: [v.x0, v.y0, v.zs[E.r1]], datos, modalidad: 'PT', unidades: c.unidades,
@@ -1170,28 +1174,28 @@
       for (let i = E.r1; i >= E.r0; i--) { const j = v.dePet[i]; if (j >= 0 && !js.includes(j)) js.push(j); }
       js.sort((a, b) => v.zs[a] - v.zs[b]);
       if (js.length >= 2) {
-        const datos = new Float32Array(js.length * N);
+        const datos = new F(js.length * N);
         js.forEach((j, k) => { const c = ctCorteSim(j); if (c) datos.set(c, k * N); else for (let q = 0; q < N; q++) datos[k * N + q] = v.vol[j * N + q]; });
         ct = Object.assign(comun(v.cab), { nx: v.cols, ny: v.rows, nz: js.length, spacing: [v.dx, v.dy, v.dz], origin: [v.x0, v.y0, v.zs[js[0]]], datos, modalidad: 'CT', unidades: 'HU',
-          descripcion: v.desc + (ctCambiado() ? ' · simulado' : ''), simulado: ctCambiado(), ventana: 400, nivelCt: 40 });
+          descripcion: v.desc + (ctCambiado() ? ' · simulado' : ''), simulado: ctCambiado(), ventana: 400, nivelCt: 40, recorte: v.recorte });
       }
     }
     const sim = pets.some(q => q.simulado) || (ct && ct.simulado);
-    return { ct, pets, nota: sim ? 'Las imágenes traen parámetros simulados en la consola: no son las adquiridas.' : 'Imágenes tal como se adquirieron.' };
+    return { ct, pets, nota: (sim ? 'Las imágenes traen parámetros simulados en la consola: no son las adquiridas.' : 'Imágenes tal como se adquirieron.') + (ct && ct.recorte ? ' El CT viene recortado: sin el aire de arriba y de abajo, con su resolución original (matriz adquirida ' + ct.recorte.cols + ' × ' + ct.recorte.rows + ').' : '') };
   }
   function enviarAVolumina() {
     const w = $('marcoVolumina').contentWindow;
     if (!voluminaCargada || !w || !w.ConsolaPuente) return;
     const clave = E.pets[0].uid + '/' + E.r0 + '/' + E.r1 + '/' + E.simVer + '/' + E.nivel + '/' + $('ocultarId').checked;
     if (clave === voluminaEnviado) return;
-    w.ConsolaPuente.recibir(estudioParaVolumina()); voluminaEnviado = clave;
+    w.ConsolaPuente.recibir(estudioParaVolumina(w.Float32Array)); voluminaEnviado = clave;
   }
   function voluminaLista() { voluminaCargada = true; if (!$('capaVolumina').hidden) enviarAVolumina(); }
   function abrirVolumina() {
     if (E.fase !== 'terminado') { decir('Volumina se abre cuando termina el examen: primero adquiere el CT y el PET.', true); return; }
     $('capaVolumina').hidden = false;
     const m = $('marcoVolumina');
-    if (!m.getAttribute('src')) m.setAttribute('src', 'volumina/index.html?v=4'); else enviarAVolumina();
+    if (!m.getAttribute('src')) m.setAttribute('src', 'volumina/index.html?v=5'); else enviarAVolumina();
     decir('Estudio enviado a Volumina: ' + (E.ct ? 'CT y ' : '') + E.pets.length + ' serie(s) PET, ' + (E.r1 - E.r0 + 1) + ' cortes.');
   }
   // El tutorial usa esto para llevar la consola a la pantalla de la que habla cada paso.

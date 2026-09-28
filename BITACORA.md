@@ -173,3 +173,23 @@ Participantes: Luciano Tejada (docente) y Claude (Claude Code).
 - Las preguntas por caso las redactó Claude a partir de las cabeceras: falta la revisión docente.
 - El caso 5 no tiene cuerpo entero, solo extremidades.
 - En un computador con poca memoria los casos 2 y 5 pueden no abrir en Volumina con el rango completo.
+
+## 2026-09-28 · Octava ronda: menos memoria sin perder resolución
+
+Participantes: Luciano Tejada (docente) y Claude (Claude Code).
+
+**Contexto.** Con el CT a resolución completa la página usaba entre 520 y 1.000 MB. El docente preguntó cómo simplificar los casos que más memoria ocupan y, vista la propuesta, pidió recortar todos y poner los avisos correspondientes en los simuladores.
+
+**Decisiones.**
+- **Recorte del aire del CT en los cinco casos**, no solo en los pesados, para que todos queden iguales. Se conserva el rectángulo que contiene al paciente y la camilla, con 8 píxeles de margen. No cambia el tamaño de píxel ni se quita anatomía.
+- **Solo se pudo recortar arriba y abajo.** A los lados no hay aire que quitar: en los cinco casos los brazos, los hombros o la camilla llegan al borde del campo. El ahorro en el CT fue de 1 % a 34 % según el caso, menos del tercio o la mitad que se había estimado antes de medir.
+- **La camilla se conserva.** Quitarla ahorraría más, pero es parte de lo que el CT muestra y de lo que entra en la corrección de atenuación.
+- **El PET no se toca.**
+- **El recorte queda declarado en la cabecera** (descripción de la derivación, con la matriz original y las filas conservadas). La consola lo lee de ahí: no depende de saber qué caso es.
+- **Avisos**: mensaje de carga, tarjeta del CT (matriz adquirida y matriz cargada), diálogo «Qué es real y qué no», estado y nota de Volumina, y LEEME de cada ZIP.
+- **Una sola copia al pasar a Volumina.** Antes la consola armaba una copia del rango y el visor hacía otra. Ahora la consola escribe directamente en arreglos creados dentro del visor. Es el cambio que más memoria ahorra y no toca los datos.
+- Descartado: bajar la matriz del CT, engrosar sus cortes o acortar el rango del estudio.
+
+**Validación.** Comparación de los 1.176 cortes de CT recortados con los originales: cero vóxeles distintos, error de posición de 0 mm, y lo más denso que quedó fuera va de −652 a −912 HU, es decir, aire. Verificación de identidad de la entrega repetida sobre 3.744 DICOM, sin hallazgos. Cada ZIP cargado entero hasta Volumina: 14, 14, 14, 14 y 13 comprobaciones correctas, sin fallas. Memoria que informa el navegador, antes y después: caso 1, 664 y 310 MB; caso 2, 889 y 419; caso 3, 515 y 320; caso 4, 775 y 424; caso 5, 945 y 517.
+
+**Pendiente.** La memoria medida es la que informa Chrome para la página; no incluye la de la tarjeta gráfica.

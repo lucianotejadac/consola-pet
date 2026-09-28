@@ -7,9 +7,11 @@ const ConsolaPuente = (() => {
   const generados = {};
   const medio = v => Math.round(v * 2) / 2;
 
-  // Los arreglos se copian a este documento para que el visor sea dueño de sus datos.
+  // La consola escribe los datos en arreglos creados aqui, asi que se usan tal cual, sin otra
+  // copia. Solo se copian si llegan de otro documento.
   function volumenDe(d) {
-    const data = new Float32Array(d.datos.length); data.set(d.datos);
+    let data = d.datos;
+    if (!(data instanceof Float32Array)) { data = new Float32Array(d.datos.length); data.set(d.datos); }
     return {
       nx: d.nx, ny: d.ny, nz: d.nz, spacing: d.spacing.slice(), origin: d.origin.slice(), data,
       description: d.descripcion, modality: d.modalidad, sopClass: d.sopClass || '', units: d.unidades || '',

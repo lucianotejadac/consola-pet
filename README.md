@@ -27,6 +27,8 @@ Los archivos se leen en el navegador y no salen del equipo. Este repositorio no 
 
 Los casos son públicos, de The Cancer Imaging Archive, con licencias Creative Commons Attribution: colecciones CMB-LCA (doi 10.7937/3cx3-s132), CMB-MEL (doi 10.7937/GWSP-WH72) y ACRIN-NSCLC-FDG-PET (doi 10.7937/tcia.2019.30ilqfcl). Son de cuatro equipos distintos.
 
+En los casos del curso, al CT se le recortó el aire de arriba y de abajo para que ocupe menos memoria: conserva su tamaño de píxel, toda la anatomía y la camilla, pero su matriz ya no es la de 512 × 512 con que se adquirió. La consola y el visor lo avisan. El PET no se modificó.
+
 El CT se usa a su resolución original, como en Volumina. Un CT de cuerpo entero ocupa entre 100 y 200 MB de memoria en la consola y el doble al pasar al visor.
 
 ## Archivos

@@ -158,6 +158,7 @@
     <h3>Volumina</h3>
     <p>«Pasar a Volumina» abre el visor con el CT y el PET del rango que adquiriste, sin volver a cargar archivos: cortes en los tres planos, fusión, MIP y VRT, y generación de cortes. Recibe las imágenes como están en la consola, así que si cambiaste parámetros llegan simuladas y el visor lo avisa.</p>
     <h3>Memoria</h3>
+    <p>En los casos del curso, al CT se le recortó el aire de arriba y de abajo para que ocupe menos memoria. Conserva su tamaño de píxel, toda la anatomía y la camilla, pero su matriz ya no es la de 512 × 512 con que se adquirió; la tarjeta del CT muestra las dos. A los lados no se recortó, porque los brazos y la camilla llegan al borde del campo. El PET no se modificó.</p>
     <p>El CT se usa a su resolución original, igual que en Volumina. Un CT de cuerpo entero ocupa entre 100 y 200 MB en la consola y el doble al pasar a Volumina. En un computador con poca memoria la página puede ponerse lenta o cerrarse: en ese caso cierra otras pestañas, o elige un rango más corto antes de pasar a Volumina, porque el visor solo recibe el rango adquirido.</p>
     <h3>Es ilustrativo</h3>
     <p>Las alternativas que aparecen al abrir las listas en gris. El valor marcado es el que se usó; los demás muestran qué se podría haber elegido en una consola, pero no cambian la imagen: el estudio ya está reconstruido y los datos crudos no vienen en el DICOM.</p>
@@ -169,7 +170,7 @@
 
 <script src="vendor/dicomParser.min.js"></script>
 <script src="casos.js?v=1"></script>
-<script src="consola.js?v=9"></script>
+<script src="consola.js?v=10"></script>
 <script src="tutorial.js?v=2"></script>
 </body>
 </html>
