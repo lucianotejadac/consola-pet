@@ -41,3 +41,8 @@ El CT se usa a su resolución original, como en Volumina. Un CT de cuerpo entero
 - `BITACORA.md`: decisiones de cada ronda de trabajo.
 
 Uso docente. No es una consola real ni un visor validado para diagnóstico, y no está afiliado a ningún fabricante.
+
+## Licencia
+
+© 2026 Luciano Tejada Castro. Distribuido bajo licencia [MIT](LICENSE).
+Los componentes y datos de terceros conservan sus propias licencias, indicadas en este documento o junto a ellos.
